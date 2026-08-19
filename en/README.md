@@ -123,6 +123,10 @@ Both are one-time steps.
 
 ## 🔐 Privacy and Security
 
+### Local calendar MCP
+
+Source installations and desktop builds include `careerdesk-calendar-mcp`, which lets local MCP clients such as Codex manage calendar events and to-dos over standard input/output. It reuses CareerDesk's configured local user and data directory. **It is restricted to local stdio and must never be changed to SSE/HTTP or exposed on a network.** Writes use revisions to prevent concurrent overwrites; after an error or timeout, read the item again before retrying.
+
 ### Privacy
 
 Your applications, résumés, interview notes, conversations, and generated artifacts stay on your computer. Only when you explicitly use an authorized external service is the material required for that operation sent to the LLM or other provider you configured. Strict offline mode can pause all in-app network capabilities.

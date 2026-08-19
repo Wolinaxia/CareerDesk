@@ -2,6 +2,7 @@
 
 import asyncio
 import os
+from pathlib import Path
 import sys
 
 from mcp import ClientSession, StdioServerParameters
@@ -17,7 +18,8 @@ from careerdesk.mcp import calendar_server
 def mcp_calendar(tmp_path, monkeypatch):
     monkeypatch.setenv("APP_DATA_DIR", str(tmp_path / "data"))
     monkeypatch.setenv("APP_LLM_MODEL", "")
-    monkeypatch.delenv(calendar_server.USER_ID_ENV, raising=False)
+    monkeypatch.setenv("APP_RUNTIME_MODE", "test")
+    monkeypatch.setenv("APP_DEV_FAKE_USER", "me")
     get_settings.cache_clear()
     calendar_server._initialize.cache_clear()
     yield
@@ -92,28 +94,33 @@ def test_mcp_revision_and_delete_guards(mcp_calendar):
     ) == {"status": "ok", "deleted_id": item["id"]}
 
 
-def test_mcp_tenant_boundary_and_tool_annotations(mcp_calendar, monkeypatch):
+def test_mcp_identity_comes_from_application_local_user(mcp_calendar, monkeypatch):
+    monkeypatch.setenv("CAREERDESK_MCP_USER_ID", "ignored-user")
+    assert calendar_server._context()[1] == "me"
     item = calendar_server.create_calendar_item(
         title="私人待办",
         date="2026-09-10",
         event_type="todo",
     )
-    monkeypatch.setenv(calendar_server.USER_ID_ENV, "other-user")
+    monkeypatch.setenv("APP_DEV_FAKE_USER", "other-user")
+    get_settings.cache_clear()
     assert calendar_server.list_calendar_items("2026-09-01", "2026-09-30")["items"] == []
     with pytest.raises(ToolError, match="not found"):
         calendar_server.get_calendar_item(item["id"])
 
-    tools = calendar_server.mcp._tool_manager._tools
-    assert tools["list_calendar_items"].annotations.readOnlyHint is True
-    assert tools["create_calendar_item"].annotations.destructiveHint is False
-    assert tools["delete_calendar_item"].annotations.destructiveHint is True
-    assert tools["delete_calendar_item"].annotations.openWorldHint is False
+
+def test_mcp_rejects_server_runtime(mcp_calendar, monkeypatch):
+    monkeypatch.setenv("APP_RUNTIME_MODE", "server")
+    monkeypatch.setenv("APP_DEV_FAKE_USER", "")
+    get_settings.cache_clear()
+    with pytest.raises(ToolError, match="only in local"):
+        calendar_server.list_calendar_items("2026-09-01", "2026-09-30")
 
 
 def test_mcp_rejects_invalid_ranges_and_todo_times(mcp_calendar):
     with pytest.raises(ToolError, match="at most 94 days"):
         calendar_server.list_calendar_items("2026-01-01", "2026-12-31")
-    with pytest.raises(ToolError, match="待办事项不能设置具体时间"):
+    with pytest.raises(ToolError, match=r"item: invalid value \(value_error\)"):
         calendar_server.create_calendar_item(
             title="错误待办",
             date="2026-09-10",
@@ -125,9 +132,12 @@ def test_mcp_rejects_invalid_ranges_and_todo_times(mcp_calendar):
 
 def test_mcp_stdio_handshake_and_read_tool(mcp_calendar):
     async def exercise_protocol():
+        executable = Path(sys.executable).with_name(
+            "careerdesk-calendar-mcp.exe" if os.name == "nt" else "careerdesk-calendar-mcp"
+        )
+        assert executable.is_file()
         parameters = StdioServerParameters(
-            command=sys.executable,
-            args=["-m", "careerdesk.mcp.calendar_server"],
+            command=str(executable),
             env={
                 **os.environ,
                 "APP_DATA_DIR": get_settings().data_dir,
@@ -146,7 +156,8 @@ def test_mcp_stdio_handshake_and_read_tool(mcp_calendar):
 
     initialized, tools, result = asyncio.run(exercise_protocol())
     assert initialized.serverInfo.name == "CareerDesk Calendar"
-    assert {tool.name for tool in tools.tools} == {
+    tools_by_name = {tool.name: tool for tool in tools.tools}
+    assert set(tools_by_name) == {
         "list_calendar_items",
         "get_calendar_item",
         "list_calendar_conflicts",
@@ -156,6 +167,15 @@ def test_mcp_stdio_handshake_and_read_tool(mcp_calendar):
         "set_todo_completed",
         "delete_calendar_item",
     }
+    assert tools_by_name["list_calendar_items"].annotations.readOnlyHint is True
+    assert tools_by_name["create_calendar_item"].annotations.destructiveHint is False
+    assert tools_by_name["update_calendar_item"].annotations.idempotentHint is False
+    assert tools_by_name["set_todo_completed"].annotations.idempotentHint is False
+    assert tools_by_name["delete_calendar_item"].annotations.destructiveHint is True
+    assert tools_by_name["delete_calendar_item"].annotations.openWorldHint is False
+    create_properties = tools_by_name["create_calendar_item"].inputSchema["properties"]
+    assert create_properties["location"]["anyOf"][0]["maxLength"] == 2_000
+    assert create_properties["note"]["anyOf"][0]["maxLength"] == 2_000
     assert result.isError is False
     assert result.structuredContent == {
         "start": "2026-09-01",

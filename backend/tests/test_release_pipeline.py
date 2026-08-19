@@ -185,6 +185,7 @@ def test_tag_release_runs_real_frozen_artifacts_on_both_native_oses():
     assert native_jobs.count(release_dependencies) == 2
     assert native_jobs.count("desktop/package_desktop.py") == 2
     assert native_jobs.count("scripts/frozen_artifact_smoke.py") == 2
+    assert native_jobs.count("--mcp-executable") == 2
     assert native_jobs.count("actions/upload-artifact") == 2
 
 

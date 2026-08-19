@@ -15,6 +15,11 @@ def main() -> int:
         from careerdesk.bootstrap.cli import main as cli_main
 
         return cli_main()
+    if Path(sys.executable).stem.casefold() == "careerdesk-calendar-mcp":
+        from careerdesk.mcp.calendar_server import main as mcp_main
+
+        mcp_main()
+        return 0
     from careerdesk.bootstrap.desktop import main as desktop_main
 
     return desktop_main()

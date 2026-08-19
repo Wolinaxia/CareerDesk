@@ -637,6 +637,7 @@ def test_source_wrapper_is_thin_and_console_entry_owns_the_launcher():
     assert configuration["project"]["scripts"] == {
         "careerdesk": "careerdesk.bootstrap.desktop:main",
         "careerdesk-data": "careerdesk.bootstrap.cli:main",
+        "careerdesk-calendar-mcp": "careerdesk.mcp.calendar_server:main",
     }
 
 

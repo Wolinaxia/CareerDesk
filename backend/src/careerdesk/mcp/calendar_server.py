@@ -1,10 +1,13 @@
-"""Local stdio MCP server for the CareerDesk calendar."""
+"""Local-only stdio MCP server for the CareerDesk calendar.
+
+This module intentionally has no network transport entry point. It trusts the
+local desktop data boundary and must never be exposed through SSE or HTTP.
+"""
 
 from __future__ import annotations
 
 from datetime import date
 from functools import lru_cache
-import os
 from typing import Any
 
 from mcp.server.fastmcp import FastMCP
@@ -21,20 +24,23 @@ from ..features.calendar.contracts import (
     CalendarTime,
     EventPriority,
     EventType,
+    OptionalText,
     Recurrence,
 )
 from ..platform.database import DatabaseBusy, init_db
 
 
-USER_ID_ENV = "CAREERDESK_MCP_USER_ID"
 MAX_RANGE_DAYS = 93
+LOCAL_RUNTIME_MODES = frozenset({"desktop", "development", "test"})
 
 mcp = FastMCP(
     "CareerDesk Calendar",
     instructions=(
         "Manage the user's CareerDesk calendar and to-dos. Read an item first and use its "
         "current revision for updates, completion changes, and deletion. Check conflicts before "
-        "creating or moving timed items. Deletion additionally requires confirm='DELETE'."
+        "creating or moving timed items. Write calls are not safely retryable: after any error or "
+        "timeout, read the item again before retrying. Deletion additionally requires "
+        "confirm='DELETE'. This server is local stdio only and must never use a network transport."
     ),
     log_level="WARNING",
 )
@@ -44,12 +50,6 @@ WRITE = ToolAnnotations(
     readOnlyHint=False,
     destructiveHint=False,
     idempotentHint=False,
-    openWorldHint=False,
-)
-IDEMPOTENT_WRITE = ToolAnnotations(
-    readOnlyHint=False,
-    destructiveHint=False,
-    idempotentHint=True,
     openWorldHint=False,
 )
 DELETE = ToolAnnotations(
@@ -67,11 +67,14 @@ def _initialize(db_path: str) -> None:
 
 
 def _context() -> tuple[str, str]:
-    db_path = get_settings().db_path
+    settings = get_settings()
+    if settings.runtime_mode not in LOCAL_RUNTIME_MODES:
+        raise ToolError("calendar MCP is available only in local desktop or development mode")
+    user_id = settings.dev_fake_user
+    if user_id is None:
+        raise ToolError("calendar MCP requires the application's configured local user")
+    db_path = settings.db_path
     _initialize(db_path)
-    user_id = os.environ.get(USER_ID_ENV, "me")
-    if not user_id or user_id != user_id.strip() or len(user_id) > 256:
-        raise ToolError(f"{USER_ID_ENV} must contain 1-256 non-padded characters")
     return db_path, user_id
 
 
@@ -89,7 +92,8 @@ def _validate_range(start: str, end: str) -> None:
 
 def _validation_error(error: ValidationError) -> ToolError:
     details = "; ".join(
-        ".".join(str(part) for part in item["loc"]) + ": " + item["msg"]
+        (".".join(str(part) for part in item["loc"]) or "item")
+        + ": invalid value (" + item["type"] + ")"
         for item in error.errors(include_url=False)
     )
     return ToolError(f"calendar item is invalid: {details}")
@@ -97,12 +101,12 @@ def _validation_error(error: ValidationError) -> ToolError:
 
 def _repository_error(error: Exception) -> ToolError:
     if isinstance(error, repository.CalendarConflict):
-        return ToolError(f"revision conflict: {error}")
+        return ToolError("revision conflict; read the item again before retrying")
     if isinstance(error, repository.CalendarApplicationConflict):
-        return ToolError(str(error))
+        return ToolError("linked job application does not exist or was deleted")
     if isinstance(error, DatabaseBusy):
         return ToolError("CareerDesk is busy; retry the operation")
-    return ToolError(str(error))
+    return ToolError("calendar operation failed validation")
 
 
 def _get_owned_event(db_path: str, user_id: str, event_id: int) -> dict:
@@ -165,8 +169,8 @@ def create_calendar_item(
     end_time: CalendarTime | None = None,
     recurrence: Recurrence = "none",
     repeat_until: CalendarDate | None = None,
-    location: str | None = None,
-    note: str | None = None,
+    location: OptionalText | None = None,
+    note: OptionalText | None = None,
     application_id: int | None = None,
 ) -> dict[str, Any]:
     """Create an event or timeless to-do. Use event_type='todo' for a to-do."""
@@ -194,7 +198,7 @@ def create_calendar_item(
         raise _repository_error(error) from None
 
 
-@mcp.tool(annotations=IDEMPOTENT_WRITE, structured_output=True)
+@mcp.tool(annotations=WRITE, structured_output=True)
 def update_calendar_item(
     event_id: int,
     expected_revision: int,
@@ -206,8 +210,8 @@ def update_calendar_item(
     end_time: CalendarTime | None = None,
     recurrence: Recurrence = "none",
     repeat_until: CalendarDate | None = None,
-    location: str | None = None,
-    note: str | None = None,
+    location: OptionalText | None = None,
+    note: OptionalText | None = None,
     application_id: int | None = None,
     completed: bool = False,
 ) -> dict[str, Any]:
@@ -245,7 +249,7 @@ def update_calendar_item(
     return result
 
 
-@mcp.tool(annotations=IDEMPOTENT_WRITE, structured_output=True)
+@mcp.tool(annotations=WRITE, structured_output=True)
 def set_todo_completed(
     event_id: int, expected_revision: int, completed: bool = True,
 ) -> dict[str, Any]:
@@ -293,7 +297,7 @@ def delete_calendar_item(
 
 
 def main() -> None:
-    """Run the protocol server without writing non-protocol data to stdout."""
+    """Run local stdio only, without writing non-protocol data to stdout."""
     mcp.run(transport="stdio")
 
 

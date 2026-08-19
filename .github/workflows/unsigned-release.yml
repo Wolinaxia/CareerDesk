@@ -159,7 +159,8 @@ jobs:
           set -euo pipefail
           uv run --project backend python scripts/frozen_artifact_smoke.py \
             --desktop-executable "${RUNNER_TEMP}/desktop-output/dist/CareerDesk.app/Contents/MacOS/CareerDesk" \
-            --data-executable "${RUNNER_TEMP}/desktop-output/dist/CareerDesk.app/Contents/MacOS/careerdesk-data"
+            --data-executable "${RUNNER_TEMP}/desktop-output/dist/CareerDesk.app/Contents/MacOS/careerdesk-data" \
+            --mcp-executable "${RUNNER_TEMP}/desktop-output/dist/CareerDesk.app/Contents/MacOS/careerdesk-calendar-mcp"
       - name: Archive with an explicit unsigned filename
         shell: bash
         run: |
@@ -226,7 +227,8 @@ jobs:
         run: |
           uv run --project backend python scripts/frozen_artifact_smoke.py `
             --desktop-executable "$env:RUNNER_TEMP\desktop-output\dist\CareerDesk\CareerDesk.exe" `
-            --data-executable "$env:RUNNER_TEMP\desktop-output\dist\CareerDesk\careerdesk-data.exe"
+            --data-executable "$env:RUNNER_TEMP\desktop-output\dist\CareerDesk\careerdesk-data.exe" `
+            --mcp-executable "$env:RUNNER_TEMP\desktop-output\dist\CareerDesk\careerdesk-calendar-mcp.exe"
       - name: Archive with an explicit unsigned filename
         shell: pwsh
         run: |

@@ -146,6 +146,7 @@ def test_build_environment_strips_credentials_and_points_discovery_at_wheel(tmp_
         version="0.1.0",
         windows_version_file=None,
         windows_data_version_file=None,
+        windows_mcp_version_file=None,
         legal_dir=tmp_path / "legal",
     )
 
@@ -238,6 +239,7 @@ def test_build_manifest_contract_has_no_signing_claim(
         executable.parent.mkdir(parents=True)
         executable.write_bytes(b"executable")
         (executable.parent / "careerdesk-data").write_bytes(b"data-executable")
+        (executable.parent / "careerdesk-calendar-mcp").write_bytes(b"mcp-executable")
         resource_root = artifact / "Contents/Resources/careerdesk"
         (resource_root / "frontend_dist").mkdir(parents=True)
         (resource_root / "default.env").write_text("", encoding="utf-8")
@@ -277,6 +279,8 @@ def test_build_manifest_contract_has_no_signing_claim(
     assert len(manifest["executable_sha256"]) == 64
     assert manifest["data_executable"].endswith("/careerdesk-data")
     assert len(manifest["data_executable_sha256"]) == 64
+    assert manifest["mcp_executable"].endswith("/careerdesk-calendar-mcp")
+    assert len(manifest["mcp_executable_sha256"]) == 64
     assert manifest["legal_notices"] is True
     assert len(manifest["python_notice_index_sha256"]) == 64
     assert len(manifest["node_notice_index_sha256"]) == 64
@@ -332,6 +336,8 @@ def test_spec_uses_installed_wheel_resources_and_platform_native_artifacts():
     assert 'bundle_identifier="com.careerdesk.desktop"' in source
     assert 'name="CareerDesk"' in source
     assert 'name="careerdesk-data"' in source
+    assert 'name="careerdesk-calendar-mcp"' in source
+    assert 'collect_submodules("mcp", filter=lambda name: not name.startswith("mcp.cli"))' in source
     assert "console=False" in source
     assert "console=True" in source
     assert "COLLECT(" in source
@@ -339,7 +345,7 @@ def test_spec_uses_installed_wheel_resources_and_platform_native_artifacts():
     assert '(str(LEGAL), "Legal")' in source
     assert 'collect_data_files("magika")' in source
     assert 'collect_data_files("sqlite_vec")' in source
-    assert source.count("codesign_identity=None") == 3
+    assert source.count("codesign_identity=None") == 4
     assert "--onefile" not in source
     assert "SOURCE_LAYOUT" not in source
 

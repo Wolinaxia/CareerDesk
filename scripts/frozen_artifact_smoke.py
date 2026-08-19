@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import asyncio
 import json
 from contextlib import closing
 import os
@@ -16,6 +17,9 @@ import tempfile
 import time
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
+
+from mcp import ClientSession, StdioServerParameters
+from mcp.client.stdio import stdio_client
 
 from careerdesk.platform.database import init_db
 from careerdesk.platform.database.schema import SCHEMA_VERSION
@@ -170,8 +174,35 @@ def _run_data_round_trip(executable: Path, root: Path) -> None:
         raise RuntimeError("frozen data command lost an uploaded file")
 
 
-def smoke(desktop_executable: Path, data_executable: Path) -> None:
-    if not desktop_executable.is_file() or not data_executable.is_file():
+async def _exercise_mcp(executable: Path, environment: dict[str, str]) -> None:
+    parameters = StdioServerParameters(command=str(executable), env=environment)
+    with open(os.devnull, "w", encoding="utf-8") as errlog:
+        async with stdio_client(parameters, errlog=errlog) as (read_stream, write_stream):
+            async with ClientSession(read_stream, write_stream) as session:
+                initialized = await session.initialize()
+                tools = await session.list_tools()
+                result = await session.call_tool("list_calendar_items", {
+                    "start": "2026-09-01",
+                    "end": "2026-09-30",
+                })
+    if initialized.serverInfo.name != "CareerDesk Calendar":
+        raise RuntimeError("frozen MCP returned an unexpected server identity")
+    if "list_calendar_items" not in {tool.name for tool in tools.tools}:
+        raise RuntimeError("frozen MCP did not expose list_calendar_items")
+    if result.isError or result.structuredContent != {
+        "start": "2026-09-01", "end": "2026-09-30", "items": [],
+    }:
+        raise RuntimeError(f"frozen MCP list_calendar_items failed: {result}")
+
+
+def _run_mcp_smoke(executable: Path, root: Path) -> None:
+    asyncio.run(_exercise_mcp(executable, _isolated_environment(root / "mcp")))
+
+
+def smoke(desktop_executable: Path, data_executable: Path, mcp_executable: Path) -> None:
+    if not all(path.is_file() for path in (
+        desktop_executable, data_executable, mcp_executable,
+    )):
         raise FileNotFoundError("frozen desktop artifact is missing an executable")
     # WebView2 leaves Crashpad files behind briefly; leftover temp data on an
     # ephemeral runner is acceptable while a cleanup crash would mask a green run.
@@ -180,6 +211,7 @@ def smoke(desktop_executable: Path, data_executable: Path) -> None:
     ) as temporary:
         root = Path(temporary)
         _run_data_round_trip(data_executable, root)
+        _run_mcp_smoke(mcp_executable, root)
         port = _free_port()
         environment = _isolated_environment(root / "desktop", port=port)
         log_path = root / "desktop.log"
@@ -362,9 +394,10 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="原生运行冻结桌面与数据维护可执行文件")
     parser.add_argument("--desktop-executable", type=Path, required=True)
     parser.add_argument("--data-executable", type=Path, required=True)
+    parser.add_argument("--mcp-executable", type=Path, required=True)
     arguments = parser.parse_args()
-    smoke(arguments.desktop_executable, arguments.data_executable)
-    print("frozen desktop/data smoke passed")
+    smoke(arguments.desktop_executable, arguments.data_executable, arguments.mcp_executable)
+    print("frozen desktop/data/MCP smoke passed")
     return 0
 
 

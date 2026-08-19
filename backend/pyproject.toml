@@ -32,6 +32,7 @@ dependencies = [
 [project.scripts]
 careerdesk = "careerdesk.bootstrap.desktop:main"
 careerdesk-data = "careerdesk.bootstrap.cli:main"
+careerdesk-calendar-mcp = "careerdesk.mcp.calendar_server:main"
 
 [dependency-groups]
 dev = [
