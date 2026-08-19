@@ -133,6 +133,63 @@ def test_calendar_rejects_invalid_time_and_unbounded_ranges(calendar_client):
     ).status_code == 422
 
 
+def test_todo_is_timeless_and_can_be_checked_off(calendar_client):
+    client, _db_path = calendar_client
+    created = client.post("/api/calendar/events", json=event(
+        title="注册招聘账号",
+        event_type="todo",
+        start_time=None,
+        end_time=None,
+        location=None,
+        completed=False,
+    ))
+    assert created.status_code == 201, created.text
+    item = created.json()
+    assert item["completed"] is False
+    assert item["start_time"] is None
+
+    updated = client.put(f"/api/calendar/events/{item['id']}", json={
+        **event(
+            title="注册招聘账号",
+            event_type="todo",
+            start_time=None,
+            end_time=None,
+            location=None,
+            completed=True,
+        ),
+        "expected_revision": item["revision"],
+    })
+    assert updated.status_code == 200, updated.text
+    assert updated.json()["completed"] is True
+    assert updated.json()["revision"] == item["revision"] + 1
+
+    items = client.get(
+        "/api/calendar/events?start=2026-09-01&end=2026-09-30"
+    ).json()["items"]
+    assert items[0]["title"] == "注册招聘账号"
+    assert items[0]["completed"] is True
+    assert items[0]["conflict_count"] == 0
+
+
+def test_todo_rejects_time_recurrence_and_non_todo_completion(calendar_client):
+    client, _db_path = calendar_client
+    assert client.post("/api/calendar/events", json=event(
+        event_type="todo",
+        completed=False,
+    )).status_code == 422
+    assert client.post("/api/calendar/events", json=event(
+        event_type="todo",
+        start_time=None,
+        end_time=None,
+        recurrence="weekly",
+        repeat_until="2026-09-28",
+        completed=False,
+    )).status_code == 422
+    assert client.post("/api/calendar/events", json=event(
+        completed=True,
+    )).status_code == 422
+
+
 def test_calendar_extension_remains_valid_on_next_database_start(calendar_client):
     _client, db_path = calendar_client
     init_db(db_path)
@@ -160,8 +217,21 @@ def test_calendar_schema_rejects_null_weekly_end_and_projection_is_defensive(cal
 def test_calendar_schema_atomically_upgrades_legacy_weekly_constraint(tmp_path):
     db_path = str(tmp_path / "legacy-calendar.db")
     init_db(db_path)
-    legacy_schema = calendar_repository.EXTENSION_SCHEMA.replace(
-        " AND repeat_until IS NOT NULL", "",
+    legacy_schema = (
+        calendar_repository.EXTENSION_SCHEMA
+        .replace("'deadline', 'todo',\n                       'other'", "'deadline', 'other'")
+        .replace(
+            "    completed      INTEGER NOT NULL DEFAULT 0 CHECK (completed IN (0, 1)),\n",
+            "",
+        )
+        .replace(
+            "    CHECK (event_type != 'todo' OR (\n"
+            "        start_time IS NULL AND recurrence = 'none' AND repeat_until IS NULL\n"
+            "    )),\n",
+            "",
+        )
+        .replace("    CHECK (event_type = 'todo' OR completed = 0),\n", "")
+        .replace(" AND repeat_until IS NOT NULL", "")
     )
     timestamp = now_iso()
     with transaction(db_path) as conn:
@@ -183,10 +253,12 @@ def test_calendar_schema_atomically_upgrades_legacy_weekly_constraint(tmp_path):
             "AND name='extension_calendar_events'"
         ).fetchone()[0]
         row = conn.execute(
-            "SELECT event_date, repeat_until FROM extension_calendar_events"
+            "SELECT event_date, repeat_until, completed FROM extension_calendar_events"
         ).fetchone()
     assert "repeat_until IS NOT NULL" in sql
-    assert row == ("2026-09-07", "2026-09-07")
+    assert "'todo'" in sql
+    assert "completed" in sql
+    assert row == ("2026-09-07", "2026-09-07", 0)
 
 
 def test_application_delete_detaches_calendar_event(calendar_client):

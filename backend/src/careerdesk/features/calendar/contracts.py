@@ -21,6 +21,7 @@ EventType = Literal[
     "written_test",
     "interview",
     "deadline",
+    "todo",
     "other",
 ]
 EventPriority = Literal["high", "medium", "low"]
@@ -76,6 +77,7 @@ class CalendarEventFields(_Contract):
     location: OptionalText | None = None
     note: OptionalText | None = None
     application_id: int | None = Field(default=None, gt=0)
+    completed: bool = False
 
     @model_validator(mode="after")
     def coherent_schedule(self) -> "CalendarEventFields":
@@ -84,6 +86,13 @@ class CalendarEventFields(_Contract):
         if self.start_time is not None and self.end_time is not None:
             if self.end_time <= self.start_time:
                 raise ValueError("结束时间必须晚于开始时间")
+        if self.event_type == "todo":
+            if self.start_time is not None:
+                raise ValueError("待办事项不能设置具体时间")
+            if self.recurrence != "none":
+                raise ValueError("待办事项暂不支持重复")
+        elif self.completed:
+            raise ValueError("只有待办事项可以标记完成")
         if self.recurrence == "none" and self.repeat_until is not None:
             raise ValueError("单次日程不能设置重复截止日期")
         if self.recurrence == "weekly":

@@ -28,7 +28,7 @@ import {
 
 const PRIORITIES: CalendarPriority[] = ["high", "medium", "low"];
 const EVENT_TYPES: CalendarEventType[] = [
-  "course", "career_fair", "written_test", "interview", "deadline", "other",
+  "course", "career_fair", "written_test", "interview", "deadline", "todo", "other",
 ];
 
 function blankInput(date: string): CalendarEventInput {
@@ -44,6 +44,7 @@ function blankInput(date: string): CalendarEventInput {
     location: null,
     note: null,
     application_id: null,
+    completed: false,
   };
 }
 
@@ -60,6 +61,7 @@ function inputFromEvent(event: CalendarEvent): CalendarEventInput {
     location: event.location,
     note: event.note,
     application_id: event.application_id,
+    completed: event.completed,
   };
 }
 
@@ -83,6 +85,7 @@ function useCalendarLabels() {
       written_test: l("笔试", "Written test"),
       interview: l("面试", "Interview"),
       deadline: l("截止事项", "Deadline"),
+      todo: l("待办", "To-do"),
       other: l("其他", "Other"),
     } satisfies Record<CalendarEventType, string>,
   };
@@ -109,6 +112,45 @@ function EventNote({ event, onOpen }: { event: CalendarOccurrence; onOpen: () =>
         {event.location ? ` · ${event.location}` : ""}
       </span>
     </button>
+  );
+}
+
+function TodoNote({
+  event,
+  busy,
+  onOpen,
+  onToggle,
+}: {
+  event: CalendarOccurrence;
+  busy: boolean;
+  onOpen: () => void;
+  onToggle: () => void;
+}) {
+  const l = useLocalizer();
+  return (
+    <div
+      className={`flex min-h-8 w-full items-center gap-1.5 border border-l-2 px-1.5 py-1 shadow-sm ${priorityStyle(event.priority)} ${event.completed ? "opacity-55" : ""}`}
+      style={{ borderRadius: 2 }}
+    >
+      <input
+        type="checkbox"
+        checked={event.completed}
+        disabled={busy}
+        onChange={onToggle}
+        aria-label={event.completed
+          ? l(`将待办“${event.title}”标为未完成`, `Mark “${event.title}” incomplete`)
+          : l(`完成待办“${event.title}”`, `Complete “${event.title}”`)}
+        className="h-3.5 w-3.5 shrink-0"
+      />
+      <button
+        type="button"
+        onClick={onOpen}
+        className="min-w-0 flex-1 truncate text-left text-[11px] font-medium"
+        title={event.note ?? event.title}
+      >
+        <span className={event.completed ? "line-through" : ""}>{event.title}</span>
+      </button>
+    </div>
   );
 }
 
@@ -251,6 +293,23 @@ function EventDialog({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const dialogRef = useModalDialog(onClose, !busy);
+  const isTodo = form.event_type === "todo";
+
+  function changeType(eventType: CalendarEventType) {
+    const todo = eventType === "todo";
+    const wasTodo = form.event_type === "todo";
+    if (todo) setAllDay(true);
+    else if (wasTodo) setAllDay(false);
+    setForm((current) => ({
+      ...current,
+      event_type: eventType,
+      completed: todo ? current.completed : false,
+      start_time: todo ? null : (wasTodo ? "09:00" : current.start_time),
+      end_time: todo ? null : (wasTodo ? "10:00" : current.end_time),
+      recurrence: todo ? "none" : current.recurrence,
+      repeat_until: todo ? null : current.repeat_until,
+    }));
+  }
 
   async function save() {
     if (!form.title.trim() || busy) return;
@@ -263,9 +322,10 @@ function EventDialog({
     const payload = {
       ...form,
       title: form.title.trim(),
-      start_time: allDay ? null : form.start_time,
-      end_time: allDay ? null : form.end_time,
-      repeat_until: form.recurrence === "weekly" ? (form.repeat_until || null) : null,
+      start_time: isTodo || allDay ? null : form.start_time,
+      end_time: isTodo || allDay ? null : form.end_time,
+      recurrence: isTodo ? "none" as const : form.recurrence,
+      repeat_until: !isTodo && form.recurrence === "weekly" ? (form.repeat_until || null) : null,
       location: form.location?.trim() || null,
       note: form.note?.trim() || null,
     };
@@ -281,7 +341,8 @@ function EventDialog({
   }
 
   async function remove() {
-    if (!event || busy || !window.confirm(l(`删除日程“${event.title}”？`, `Delete “${event.title}”?`))) return;
+    const noun = event?.event_type === "todo" ? l("待办", "to-do") : l("日程", "event");
+    if (!event || busy || !window.confirm(l(`删除${noun}“${event.title}”？`, `Delete ${noun} “${event.title}”?`))) return;
     setBusy(true);
     setError("");
     try {
@@ -299,20 +360,22 @@ function EventDialog({
       <div ref={dialogRef} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby="calendar-editor-title" className="max-h-[92vh] w-full overflow-y-auto rounded-t-2xl border border-line bg-panel p-5 shadow-2xl sm:max-w-2xl sm:rounded-lg sm:p-6">
         <div className="mb-5 flex items-center justify-between gap-4">
           <h2 id="calendar-editor-title" className="text-lg font-semibold">
-            {event ? l("编辑日程", "Edit event") : l("新建日程", "New event")}
+            {isTodo
+              ? (event ? l("编辑待办", "Edit to-do") : l("新建待办", "New to-do"))
+              : (event ? l("编辑日程", "Edit event") : l("新建日程", "New event"))}
           </h2>
           <button type="button" className="btn h-9 w-9 p-0" aria-label={l("关闭", "Close")} title={l("关闭", "Close")} onClick={onClose} disabled={busy}>×</button>
         </div>
 
         <div className="grid gap-4 sm:grid-cols-2">
           <label className="sm:col-span-2"><span className="mb-1 block text-xs font-medium text-ink-2">{l("标题", "Title")}</span><input autoFocus className={field} value={form.title} maxLength={120} onChange={(e) => setForm((current) => ({ ...current, title: e.target.value }))} /></label>
-          <label><span className="mb-1 block text-xs font-medium text-ink-2">{l("类型", "Type")}</span><select className={field} value={form.event_type} onChange={(e) => setForm((current) => ({ ...current, event_type: e.target.value as CalendarEventType }))}>{EVENT_TYPES.map((type) => <option key={type} value={type}>{labels.type[type]}</option>)}</select></label>
+          <label><span className="mb-1 block text-xs font-medium text-ink-2">{l("类型", "Type")}</span><select className={field} value={form.event_type} onChange={(e) => changeType(e.target.value as CalendarEventType)}>{EVENT_TYPES.map((type) => <option key={type} value={type}>{labels.type[type]}</option>)}</select></label>
           <div><span className="mb-1 block text-xs font-medium text-ink-2">{l("优先级", "Priority")}</span><div className="segmented grid grid-cols-3">{PRIORITIES.map((priority) => <button key={priority} type="button" aria-pressed={form.priority === priority} className={`segmented-item ${form.priority === priority ? "segmented-on" : ""}`} onClick={() => setForm((current) => ({ ...current, priority }))}>{labels.priority[priority]}</button>)}</div></div>
-          <label><span className="mb-1 block text-xs font-medium text-ink-2">{form.recurrence === "weekly" ? l("系列首次日期", "Series start date") : l("日期", "Date")}</span><input type="date" className={field} value={form.date} onChange={(e) => setForm((current) => ({ ...current, date: e.target.value }))} /></label>
-          <label className="flex items-end gap-2 pb-2 text-sm"><input type="checkbox" checked={allDay} onChange={(e) => setAllDay(e.target.checked)} />{l("全天事项", "All-day event")}</label>
-          {!allDay && <><label><span className="mb-1 block text-xs font-medium text-ink-2">{l("开始时间", "Start")}</span><input type="time" className={field} value={form.start_time ?? "09:00"} onChange={(e) => setForm((current) => ({ ...current, start_time: e.target.value }))} /></label><label><span className="mb-1 block text-xs font-medium text-ink-2">{l("结束时间", "End")}</span><input type="time" className={field} value={form.end_time ?? "10:00"} onChange={(e) => setForm((current) => ({ ...current, end_time: e.target.value }))} /></label></>}
-          <label><span className="mb-1 block text-xs font-medium text-ink-2">{l("重复", "Repeat")}</span><select className={field} value={form.recurrence} onChange={(e) => setForm((current) => ({ ...current, recurrence: e.target.value as "none" | "weekly", repeat_until: e.target.value === "weekly" ? (current.repeat_until ?? addDays(current.date, 84)) : null }))}><option value="none">{l("不重复", "Does not repeat")}</option><option value="weekly">{l("每周", "Weekly")}</option></select></label>
-          {form.recurrence === "weekly" && <label><span className="mb-1 block text-xs font-medium text-ink-2">{l("重复至", "Repeat until")}</span><input type="date" min={form.date} className={field} value={form.repeat_until ?? form.date} onChange={(e) => setForm((current) => ({ ...current, repeat_until: e.target.value }))} /></label>}
+          <label><span className="mb-1 block text-xs font-medium text-ink-2">{isTodo ? l("计划日期", "Planned date") : form.recurrence === "weekly" ? l("系列首次日期", "Series start date") : l("日期", "Date")}</span><input type="date" className={field} value={form.date} onChange={(e) => setForm((current) => ({ ...current, date: e.target.value }))} /></label>
+          {!isTodo && <label className="flex items-end gap-2 pb-2 text-sm"><input type="checkbox" checked={allDay} onChange={(e) => setAllDay(e.target.checked)} />{l("全天事项", "All-day event")}</label>}
+          {!isTodo && !allDay && <><label><span className="mb-1 block text-xs font-medium text-ink-2">{l("开始时间", "Start")}</span><input type="time" className={field} value={form.start_time ?? "09:00"} onChange={(e) => setForm((current) => ({ ...current, start_time: e.target.value }))} /></label><label><span className="mb-1 block text-xs font-medium text-ink-2">{l("结束时间", "End")}</span><input type="time" className={field} value={form.end_time ?? "10:00"} onChange={(e) => setForm((current) => ({ ...current, end_time: e.target.value }))} /></label></>}
+          {!isTodo && <label><span className="mb-1 block text-xs font-medium text-ink-2">{l("重复", "Repeat")}</span><select className={field} value={form.recurrence} onChange={(e) => setForm((current) => ({ ...current, recurrence: e.target.value as "none" | "weekly", repeat_until: e.target.value === "weekly" ? (current.repeat_until ?? addDays(current.date, 84)) : null }))}><option value="none">{l("不重复", "Does not repeat")}</option><option value="weekly">{l("每周", "Weekly")}</option></select></label>}
+          {!isTodo && form.recurrence === "weekly" && <label><span className="mb-1 block text-xs font-medium text-ink-2">{l("重复至", "Repeat until")}</span><input type="date" min={form.date} className={field} value={form.repeat_until ?? form.date} onChange={(e) => setForm((current) => ({ ...current, repeat_until: e.target.value }))} /></label>}
           <label className="sm:col-span-2"><span className="mb-1 block text-xs font-medium text-ink-2">{l("关联岗位（可选）", "Linked role (optional)")}</span><select className={field} value={form.application_id ?? ""} onChange={(e) => setForm((current) => ({ ...current, application_id: e.target.value ? Number(e.target.value) : null }))}><option value="">{l("不关联岗位", "No linked role")}</option>{applications.map((application) => <option key={application.id} value={application.id}>{application.company} · {application.position}</option>)}</select></label>
           <label className="sm:col-span-2"><span className="mb-1 block text-xs font-medium text-ink-2">{l("地点", "Location")}</span><input className={field} value={form.location ?? ""} maxLength={2000} onChange={(e) => setForm((current) => ({ ...current, location: e.target.value }))} /></label>
           <label className="sm:col-span-2"><span className="mb-1 block text-xs font-medium text-ink-2">{l("备注", "Notes")}</span><textarea className={`${field} min-h-20 resize-y`} value={form.note ?? ""} maxLength={2000} onChange={(e) => setForm((current) => ({ ...current, note: e.target.value }))} /></label>
@@ -353,6 +416,7 @@ export function CalendarPage() {
   const [error, setError] = useState("");
   const [editor, setEditor] = useState<{ date: string; event: CalendarEvent | null } | null>(null);
   const [conflict, setConflict] = useState<CalendarOccurrence[] | null>(null);
+  const [togglingTodoIds, setTogglingTodoIds] = useState<Set<number>>(() => new Set());
   const refreshEpochRef = useRef(0);
   const refreshControllerRef = useRef<AbortController | null>(null);
 
@@ -412,6 +476,29 @@ export function CalendarPage() {
     setEditor({ date: event.occurrence_date, event });
   }
 
+  async function toggleTodo(event: CalendarOccurrence) {
+    if (event.event_type !== "todo" || togglingTodoIds.has(event.id)) return;
+    setError("");
+    setTogglingTodoIds((current) => new Set(current).add(event.id));
+    try {
+      const updated = await updateCalendarEvent(
+        event.id,
+        { ...inputFromEvent(event), completed: !event.completed },
+        event.revision,
+      );
+      setEvents((current) => current.map((item) =>
+        item.id === updated.id ? { ...item, ...updated } : item));
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : l("待办更新失败", "Could not update to-do"));
+    } finally {
+      setTogglingTodoIds((current) => {
+        const next = new Set(current);
+        next.delete(event.id);
+        return next;
+      });
+    }
+  }
+
   return (
     <div>
       <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -446,7 +533,9 @@ export function CalendarPage() {
                   <div className={`space-y-1.5 ${view === "month" ? "max-h-[108px] overflow-y-auto pr-0.5" : "space-y-2"}`}>
                     {blocks.map((block) => block.events.length > 1
                       ? <ConflictStack key={block.key} events={block.events} onExpand={() => setConflict(block.events)} />
-                      : <EventNote key={block.key} event={block.events[0]} onOpen={() => openEvent(block.events[0])} />)}
+                      : block.events[0].event_type === "todo"
+                        ? <TodoNote key={block.key} event={block.events[0]} busy={togglingTodoIds.has(block.events[0].id)} onOpen={() => openEvent(block.events[0])} onToggle={() => void toggleTodo(block.events[0])} />
+                        : <EventNote key={block.key} event={block.events[0]} onOpen={() => openEvent(block.events[0])} />)}
                     {loading && blocks.length === 0 && <span className="block h-8 animate-pulse bg-panel-2" style={{ borderRadius: 3 }} />}
                   </div>
                 </section>

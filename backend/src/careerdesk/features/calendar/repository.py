@@ -19,7 +19,8 @@ CREATE TABLE IF NOT EXISTS extension_calendar_events (
     user_id        TEXT NOT NULL CHECK (length(user_id) BETWEEN 1 AND 256),
     title          TEXT NOT NULL CHECK (length(title) BETWEEN 1 AND 120),
     event_type     TEXT NOT NULL CHECK (event_type IN (
-                       'course', 'career_fair', 'written_test', 'interview', 'deadline', 'other'
+                       'course', 'career_fair', 'written_test', 'interview', 'deadline', 'todo',
+                       'other'
                    )),
     priority       TEXT NOT NULL CHECK (priority IN ('high', 'medium', 'low')),
     event_date     TEXT NOT NULL CHECK (length(event_date) = 10),
@@ -30,11 +31,16 @@ CREATE TABLE IF NOT EXISTS extension_calendar_events (
     location       TEXT CHECK (location IS NULL OR length(location) <= 2000),
     note           TEXT CHECK (note IS NULL OR length(note) <= 2000),
     application_id INTEGER,
+    completed      INTEGER NOT NULL DEFAULT 0 CHECK (completed IN (0, 1)),
     revision       INTEGER NOT NULL DEFAULT 1 CHECK (revision > 0),
     created_time   TEXT NOT NULL,
     updated_time   TEXT NOT NULL,
     CHECK ((start_time IS NULL) = (end_time IS NULL)),
     CHECK (start_time IS NULL OR end_time > start_time),
+    CHECK (event_type != 'todo' OR (
+        start_time IS NULL AND recurrence = 'none' AND repeat_until IS NULL
+    )),
+    CHECK (event_type = 'todo' OR completed = 0),
     CHECK (
         (recurrence = 'none' AND repeat_until IS NULL)
         OR (recurrence = 'weekly' AND repeat_until IS NOT NULL AND repeat_until >= event_date)
@@ -47,7 +53,7 @@ CREATE INDEX IF NOT EXISTS idx_extension_calendar_user_date
 _SELECT = (
     "SELECT event.id, event.title, event.event_type, event.priority, event.event_date, "
     "event.start_time, event.end_time, event.recurrence, event.repeat_until, "
-    "event.location, event.note, event.application_id, event.revision, "
+    "event.location, event.note, event.application_id, event.completed, event.revision, "
     "application.company, application.position, event.created_time, event.updated_time "
     "FROM extension_calendar_events AS event "
     "LEFT JOIN applications AS application ON application.id = event.application_id "
@@ -70,9 +76,11 @@ def ensure_schema(db_path: str) -> None:
             "SELECT sql FROM sqlite_schema WHERE type = 'table' "
             "AND name = 'extension_calendar_events'"
         ).fetchone()
-        needs_constraint_upgrade = (
-            existing is not None
-            and "repeat_until IS NOT NULL" not in (existing[0] or "")
+        existing_sql = (existing[0] or "") if existing is not None else ""
+        needs_constraint_upgrade = existing is not None and (
+            "repeat_until IS NOT NULL" not in existing_sql
+            or "completed" not in existing_sql
+            or "'todo'" not in existing_sql
         )
         migration = ""
         if needs_constraint_upgrade:
@@ -87,11 +95,13 @@ DROP INDEX IF EXISTS idx_extension_calendar_user_date;
                     "INSERT INTO extension_calendar_events ("
                     "id, user_id, title, event_type, priority, event_date, start_time, "
                     "end_time, recurrence, repeat_until, location, note, application_id, "
-                    "revision, created_time, updated_time) "
+                    "completed, revision, created_time, updated_time) "
                     "SELECT id, user_id, title, event_type, priority, event_date, start_time, "
                     "end_time, recurrence, CASE WHEN recurrence = 'weekly' "
                     "AND repeat_until IS NULL THEN event_date ELSE repeat_until END, "
-                    "location, note, application_id, revision, created_time, updated_time "
+                    "location, note, application_id, "
+                    f"{'completed' if 'completed' in existing_sql else '0'}, "
+                    "revision, created_time, updated_time "
                     "FROM extension_calendar_events_legacy"
                 )
                 conn.execute("DROP TABLE extension_calendar_events_legacy")
@@ -125,11 +135,12 @@ def _row(row) -> dict:
         "location": row[9],
         "note": row[10],
         "application_id": row[11],
-        "revision": row[12],
-        "application_company": row[13],
-        "application_position": row[14],
-        "created_time": row[15],
-        "updated_time": row[16],
+        "completed": bool(row[12]),
+        "revision": row[13],
+        "application_company": row[14],
+        "application_position": row[15],
+        "created_time": row[16],
+        "updated_time": row[17],
     }
 
 
@@ -142,8 +153,8 @@ def create_event(db_path: str, user_id: str, fields: dict) -> dict:
         cursor = conn.execute(
             "INSERT INTO extension_calendar_events ("
             "user_id, title, event_type, priority, event_date, start_time, end_time, "
-            "recurrence, repeat_until, location, note, application_id, created_time, updated_time"
-            ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "recurrence, repeat_until, location, note, application_id, completed, "
+            "created_time, updated_time) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 user_id,
                 fields["title"],
@@ -157,6 +168,7 @@ def create_event(db_path: str, user_id: str, fields: dict) -> dict:
                 fields["location"] or None,
                 fields["note"] or None,
                 fields["application_id"],
+                fields["completed"],
                 timestamp,
                 timestamp,
             ),
@@ -184,13 +196,14 @@ def update_event(db_path: str, user_id: str, event_id: int, fields: dict) -> dic
         changed = conn.execute(
             "UPDATE extension_calendar_events SET title = ?, event_type = ?, priority = ?, "
             "event_date = ?, start_time = ?, end_time = ?, recurrence = ?, repeat_until = ?, "
-            "location = ?, note = ?, application_id = ?, revision = revision + 1, updated_time = ? "
+            "location = ?, note = ?, application_id = ?, completed = ?, "
+            "revision = revision + 1, updated_time = ? "
             "WHERE user_id = ? AND id = ? AND revision = ?",
             (
                 fields["title"], fields["event_type"], fields["priority"], fields["date"],
                 fields["start_time"], fields["end_time"], fields["recurrence"],
                 fields["repeat_until"], fields["location"] or None, fields["note"] or None,
-                fields["application_id"], now_iso(), user_id, event_id,
+                fields["application_id"], fields["completed"], now_iso(), user_id, event_id,
                 fields["expected_revision"],
             ),
         ).rowcount
@@ -312,7 +325,7 @@ def list_occurrences(db_path: str, user_id: str, start: str, end: str) -> list[d
     priority = {"high": 0, "medium": 1, "low": 2}
     items.sort(key=lambda item: (
         item["occurrence_date"], item["start_time"] is None, item["start_time"] or "24:00",
-        priority[item["priority"]], item["id"],
+        item["event_type"] == "todo", item["completed"], priority[item["priority"]], item["id"],
     ))
     return items
 

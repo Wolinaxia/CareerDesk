@@ -4,6 +4,7 @@ export type CalendarEventType =
   | "written_test"
   | "interview"
   | "deadline"
+  | "todo"
   | "other";
 
 export type CalendarPriority = "high" | "medium" | "low";
@@ -22,6 +23,7 @@ export type CalendarEvent = {
   location: string | null;
   note: string | null;
   application_id: number | null;
+  completed: boolean;
   revision: number;
   application_company: string | null;
   application_position: string | null;
@@ -49,7 +51,7 @@ export type CalendarEventInput = Omit<
 export type CalendarApplication = { id: number; company: string; position: string };
 
 const EVENT_TYPES = new Set<CalendarEventType>([
-  "course", "career_fair", "written_test", "interview", "deadline", "other",
+  "course", "career_fair", "written_test", "interview", "deadline", "todo", "other",
 ]);
 const PRIORITIES = new Set<CalendarPriority>(["high", "medium", "low"]);
 const RECURRENCES = new Set<CalendarRecurrence>(["none", "weekly"]);
@@ -77,6 +79,11 @@ function integer(value: unknown, label: string, minimum = 1): number {
   return value;
 }
 
+function boolean(value: unknown, label: string): boolean {
+  if (typeof value !== "boolean") throw new Error(`${label} must be boolean`);
+  return value;
+}
+
 function parseEvent(value: unknown): CalendarEvent {
   const item = object(value, "calendar event");
   if (!EVENT_TYPES.has(item.event_type as CalendarEventType)) throw new Error("calendar event type is invalid");
@@ -95,6 +102,7 @@ function parseEvent(value: unknown): CalendarEvent {
     location: nullableText(item.location, "calendar location"),
     note: nullableText(item.note, "calendar note"),
     application_id: item.application_id === null ? null : integer(item.application_id, "calendar application id"),
+    completed: boolean(item.completed, "calendar completion state"),
     revision: integer(item.revision, "calendar revision"),
     application_company: nullableText(item.application_company, "calendar application company"),
     application_position: nullableText(item.application_position, "calendar application position"),
@@ -135,4 +143,3 @@ export function parseCalendarApplications(value: unknown): CalendarApplication[]
     };
   });
 }
-

@@ -33,3 +33,14 @@ test("calendar dialogs support escape, trapped focus, and focus restoration", as
   assert.match(page, /openerRef\.current\?\.focus\(\)/);
   assert.equal((page.match(/const dialogRef = useModalDialog\(onClose/g) ?? []).length, 2);
 });
+
+test("to-dos use compact notes and toggle into a struck-through completed state", async () => {
+  const page = await readFile(pageUrl, "utf8");
+  assert.match(page, /function TodoNote/);
+  assert.match(page, /min-h-8/);
+  assert.match(page, /type="checkbox"/);
+  assert.match(page, /event\.completed \? "line-through"/);
+  assert.match(page, /completed: !event\.completed/);
+  assert.match(page, /event_type !== "todo"/);
+  assert.match(page, /recurrence: todo \? "none" : current\.recurrence/);
+});
