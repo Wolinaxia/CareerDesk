@@ -10,6 +10,9 @@ const GrillLabPage = lazy(() =>
 const TimelinePage = lazy(() =>
   import("../features/timeline/TimelinePage").then((module) => ({ default: module.TimelinePage })),
 );
+const CalendarPage = lazy(() =>
+  import("../features/calendar/CalendarPage").then((module) => ({ default: module.CalendarPage })),
+);
 const LibraryPage = lazy(() =>
   import("../features/library/LibraryPage").then((module) => ({ default: module.LibraryPage })),
 );
@@ -53,6 +56,7 @@ export function RouteContent({ pathname }: { pathname: string }) {
           <Route path={APP_ROUTE_PATHS.chat} element={null} />
           <Route path={APP_ROUTE_PATHS.grill} element={<GrillLabPage />} />
           <Route path={APP_ROUTE_PATHS.timeline} element={<TimelinePage />} />
+          <Route path={APP_ROUTE_PATHS.calendar} element={<CalendarPage />} />
           <Route
             path={APP_ROUTE_PATHS.questions}
             element={<Navigate replace to={`${APP_ROUTE_PATHS.grill}?view=questions`} />}

@@ -12,6 +12,7 @@ const sourceRootUrl = new URL("../", import.meta.url);
 const viteConfigUrl = new URL("../../vite.config.ts", import.meta.url);
 
 const pageOwners = [
+  ["calendar", "CalendarPage"],
   ["chat", "ChatPage"],
   ["grill", "GrillLabPage"],
   ["grill", "GrillPage"],
@@ -21,6 +22,7 @@ const pageOwners = [
   ["timeline", "TimelinePage"],
 ];
 const lazyRouteFeatures = [
+  ["calendar", "CalendarPage"],
   ["grill", "GrillLabPage"],
   ["library", "LibraryPage"],
   ["settings", "SettingsPage"],
@@ -167,7 +169,7 @@ test("the desktop shell leaves more horizontal room for the timeline board", asy
   assert.match(source, /window\.localStorage\.setItem\(SIDEBAR_COLLAPSED_KEY/);
 });
 
-test("only the four optional route groups are dynamically imported", async () => {
+test("only the optional route groups are dynamically imported", async () => {
   const [appSource, routeContentSource, boundarySource, viteConfigSource] = await Promise.all([
     readFile(appUrl, "utf8"),
     readFile(routeContentUrl, "utf8"),
@@ -313,7 +315,7 @@ test("known route variants use one shell identity and a state-preserving replace
   assert.equal(
     declarationInitializer(appSourceFile, "mainWidth")
       .getText(appSourceFile).replace(/\s+/g, ""),
-    'effectivePathname===APP_ROUTE_PATHS.timeline?"max-w-[1760px]":effectivePathname===APP_ROUTE_PATHS.settings?"max-w-6xl":"max-w-5xl"',
+    'effectivePathname===APP_ROUTE_PATHS.timeline||effectivePathname===APP_ROUTE_PATHS.calendar?"max-w-[1760px]":effectivePathname===APP_ROUTE_PATHS.settings?"max-w-6xl":"max-w-5xl"',
   );
 
   const modelBanners = descendants(
@@ -324,7 +326,7 @@ test("known route variants use one shell identity and a state-preserving replace
   assert.equal(modelBanners.length, 1);
   assert.equal(
     jsxAttributeExpression(modelBanners[0], "hidden", appSourceFile),
-    "effectivePathname===APP_ROUTE_PATHS.settings",
+    "effectivePathname===APP_ROUTE_PATHS.settings||effectivePathname===APP_ROUTE_PATHS.calendar",
   );
 
   const navigateCalls = descendants(
@@ -566,7 +568,7 @@ test("optional routes have keyed loading and failure isolation", async () => {
   assert.equal(routesElements.length, 1);
   assert.equal(boundaries.length, 1);
   assert.equal(suspenseElements.length, 1);
-  assert.equal(routeElements.length, 7);
+  assert.equal(routeElements.length, 8);
   assert.equal(jsxAttributeExpression(boundaries[0], "key", sourceFile), "pathname");
   assert.equal(
     jsxAttributeExpression(suspenseElements[0], "fallback", sourceFile),
@@ -581,6 +583,7 @@ test("optional routes have keyed loading and failure isolation", async () => {
       "APP_ROUTE_PATHS.chat": "null",
       "APP_ROUTE_PATHS.grill": "<GrillLabPage/>",
       "APP_ROUTE_PATHS.timeline": "<TimelinePage/>",
+      "APP_ROUTE_PATHS.calendar": "<CalendarPage/>",
       "APP_ROUTE_PATHS.questions": "<Navigatereplaceto={`${APP_ROUTE_PATHS.grill}?view=questions`}/>",
       "APP_ROUTE_PATHS.library": "<LibraryPage/>",
       "APP_ROUTE_PATHS.settings": "<SettingsPage/>",

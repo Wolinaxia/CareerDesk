@@ -4,6 +4,7 @@ export const APP_ROUTE_PATHS = {
   chat: "/",
   grill: "/grill",
   timeline: "/timeline",
+  calendar: "/calendar",
   questions: "/questions",
   library: "/library",
   settings: "/settings",

@@ -46,6 +46,10 @@ async def lifespan(app: FastAPI):
         maintain_trace_files(trace_path)
         init_db(settings.db_path)
 
+        from ..features.calendar.repository import ensure_schema as ensure_calendar_schema
+
+        ensure_calendar_schema(settings.db_path)
+
         from ..orchestration.assistant.service import maintain_turn_ledger
         from ..services.recovery import recover_interrupted_work
 

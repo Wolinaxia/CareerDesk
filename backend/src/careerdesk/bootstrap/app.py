@@ -9,6 +9,7 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from ..core.config import get_settings
 from ..features.applications import api as applications_api
+from ..features.calendar import api as calendar_api
 from ..features.grill import api as grill_api
 from ..features.preferences import api as preferences_api
 from ..features.questions import api as questions_api
@@ -193,6 +194,7 @@ def create_app(*, instance_lock: InstanceLock | None = None) -> FastAPI:
     app.add_middleware(RequestIdMiddleware)
     app.include_router(assistant_router)
     app.include_router(applications_api.router)
+    app.include_router(calendar_api.router)
     app.include_router(application_prep_api.router)
     app.include_router(interview_generation_api.router)
     app.include_router(interview_generation_api.grill_router)

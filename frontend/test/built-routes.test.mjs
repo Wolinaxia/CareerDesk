@@ -10,6 +10,7 @@ const UNSPLIT_INITIAL_JS_BYTES = 716_176;
 const MAX_INITIAL_JS_RATIO = 0.91;
 const frontendRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const routePages = [
+  ["calendar", "CalendarPage"],
   ["grill", "GrillLabPage"],
   ["library", "LibraryPage"],
   ["settings", "SettingsPage"],
@@ -41,7 +42,7 @@ function staticClosure(entry, chunksByFileName) {
   return files;
 }
 
-test("the production graph defers four route groups while keeping Chat in the initial graph", async (context) => {
+test("the production graph defers five route groups while keeping Chat in the initial graph", async (context) => {
   const result = await build({
     logLevel: "silent",
     build: { write: false, manifest: false },
@@ -116,6 +117,6 @@ test("the production graph defers four route groups while keeping Chat in the in
   );
   context.diagnostic(
     `initial JS graph: ${initialGraphBytes} B (${((1 - ratio) * 100).toFixed(2)}% smaller); `
-    + `four deferred route groups: ${deferredRouteBytes} B`,
+    + `five deferred route groups: ${deferredRouteBytes} B`,
   );
 });

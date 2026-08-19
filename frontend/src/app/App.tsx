@@ -16,13 +16,14 @@ import { installLocaleSync } from "../i18n/localePreference";
 import { useT } from "../i18n/useT";
 
 
-type IconName = "chat" | "flame" | "board" | "folder" | "sliders";
+type IconName = "chat" | "flame" | "board" | "calendar" | "folder" | "sliders";
 
 function Icon({ name }: { name: IconName }) {
   const paths: Record<IconName, string> = {
     chat: "M14 3H4a1.5 1.5 0 0 0-1.5 1.5v6A1.5 1.5 0 0 0 4 12h1v2.5L8.2 12H14a1.5 1.5 0 0 0 1.5-1.5v-6A1.5 1.5 0 0 0 14 3Z",
     flame: "M9 2.5c.4 2-.4 3.1-1.4 4.2C6.5 7.9 5.2 9 5.2 11a3.9 3.9 0 0 0 7.8.3c.1-1.8-.8-3.4-1.7-4.5-.3 1-.9 1.6-1.6 2-.2-2 .1-4.4-.7-6.3Z",
     board: "M3 3.5h3.4v9H3zM7.3 3.5h3.4v6H7.3zM11.6 3.5H15v11h-3.4z",
+    calendar: "M4 2.5v2M14 2.5v2M3 6.5h12M4 4h10a1 1 0 0 1 1 1v8.5H3V5a1 1 0 0 1 1-1Zm2 5h2m2 0h2m-6 2.5h2m2 0h2",
     folder: "M2.5 4.5A1.5 1.5 0 0 1 4 3h3l1.5 2H14a1.5 1.5 0 0 1 1.5 1.5V12A1.5 1.5 0 0 1 14 13.5H4A1.5 1.5 0 0 1 2.5 12z",
     sliders: "M2.5 5h4.9M10.6 5h4.9M10.6 5a1.6 1.6 0 1 1-3.2 0 1.6 1.6 0 1 1 3.2 0M2.5 12h2.8M8.5 12h6.9M8.5 12a1.6 1.6 0 1 1-3.2 0 1.6 1.6 0 1 1 3.2 0",
   };
@@ -51,6 +52,7 @@ function initialSidebarCollapsed() {
 const NAV_PRIMARY: NavEntry[] = [
   { to: APP_ROUTE_PATHS.chat, end: true, labelKey: "shell.nav.chat", icon: "chat" },
   { to: APP_ROUTE_PATHS.timeline, labelKey: "shell.nav.timeline", icon: "board" },
+  { to: APP_ROUTE_PATHS.calendar, labelKey: "shell.nav.calendar", icon: "calendar" },
 ];
 const NAV_LAB: NavEntry[] = [
   { to: APP_ROUTE_PATHS.grill, labelKey: "shell.nav.grill", icon: "flame", badgeKey: "shell.experimental" },
@@ -67,6 +69,7 @@ const PAGE_META: Record<string, { titleKey: string; hintKey: string; badgeKey?: 
     badgeKey: "shell.experimental",
   },
   [APP_ROUTE_PATHS.library]: { titleKey: "shell.nav.library", hintKey: "shell.page.library.hint" },
+  [APP_ROUTE_PATHS.calendar]: { titleKey: "shell.nav.calendar", hintKey: "shell.page.calendar.hint" },
   [APP_ROUTE_PATHS.settings]: { titleKey: "shell.nav.settings", hintKey: "shell.page.settings.hint" },
 };
 
@@ -226,7 +229,7 @@ export function App() {
   const isTimelineRoute = effectivePathname === APP_ROUTE_PATHS.timeline;
   const meta = PAGE_META[effectivePathname];
   // Timeline uses the available width while focused routes retain readable line lengths.
-  const mainWidth = effectivePathname === APP_ROUTE_PATHS.timeline
+  const mainWidth = effectivePathname === APP_ROUTE_PATHS.timeline || effectivePathname === APP_ROUTE_PATHS.calendar
     ? "max-w-[1760px]"
     : effectivePathname === APP_ROUTE_PATHS.settings
       ? "max-w-6xl"
@@ -426,7 +429,7 @@ export function App() {
       <div className={`min-w-0 flex-1 ${isTimelineRoute ? "md:min-h-0" : ""}`}>
         <main className={`mx-auto ${mainWidth} px-4 py-6 md:px-8 md:py-9 ${isTimelineRoute ? "md:flex md:h-full md:min-h-0 md:flex-col md:overflow-y-auto" : ""}`}>
           <StorageDisclosure hidden={effectivePathname === APP_ROUTE_PATHS.settings} />
-          <ModelSetupBanner hidden={effectivePathname === APP_ROUTE_PATHS.settings} />
+          <ModelSetupBanner hidden={effectivePathname === APP_ROUTE_PATHS.settings || effectivePathname === APP_ROUTE_PATHS.calendar} />
           <MaintenanceBanner />
           {meta && effectivePathname !== APP_ROUTE_PATHS.settings && (
             <div className="mb-6">
