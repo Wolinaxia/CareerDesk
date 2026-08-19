@@ -372,6 +372,7 @@ function EventDialog({
           <label><span className="mb-1 block text-xs font-medium text-ink-2">{l("类型", "Type")}</span><select className={field} value={form.event_type} onChange={(e) => changeType(e.target.value as CalendarEventType)}>{EVENT_TYPES.map((type) => <option key={type} value={type}>{labels.type[type]}</option>)}</select></label>
           <div><span className="mb-1 block text-xs font-medium text-ink-2">{l("优先级", "Priority")}</span><div className="segmented grid grid-cols-3">{PRIORITIES.map((priority) => <button key={priority} type="button" aria-pressed={form.priority === priority} className={`segmented-item ${form.priority === priority ? "segmented-on" : ""}`} onClick={() => setForm((current) => ({ ...current, priority }))}>{labels.priority[priority]}</button>)}</div></div>
           <label><span className="mb-1 block text-xs font-medium text-ink-2">{isTodo ? l("计划日期", "Planned date") : form.recurrence === "weekly" ? l("系列首次日期", "Series start date") : l("日期", "Date")}</span><input type="date" className={field} value={form.date} onChange={(e) => setForm((current) => ({ ...current, date: e.target.value }))} /></label>
+          {isTodo && <label className="flex items-end gap-2 pb-2 text-sm"><input type="checkbox" checked={form.completed} onChange={(e) => setForm((current) => ({ ...current, completed: e.target.checked }))} />{l("已完成", "Completed")}</label>}
           {!isTodo && <label className="flex items-end gap-2 pb-2 text-sm"><input type="checkbox" checked={allDay} onChange={(e) => setAllDay(e.target.checked)} />{l("全天事项", "All-day event")}</label>}
           {!isTodo && !allDay && <><label><span className="mb-1 block text-xs font-medium text-ink-2">{l("开始时间", "Start")}</span><input type="time" className={field} value={form.start_time ?? "09:00"} onChange={(e) => setForm((current) => ({ ...current, start_time: e.target.value }))} /></label><label><span className="mb-1 block text-xs font-medium text-ink-2">{l("结束时间", "End")}</span><input type="time" className={field} value={form.end_time ?? "10:00"} onChange={(e) => setForm((current) => ({ ...current, end_time: e.target.value }))} /></label></>}
           {!isTodo && <label><span className="mb-1 block text-xs font-medium text-ink-2">{l("重复", "Repeat")}</span><select className={field} value={form.recurrence} onChange={(e) => setForm((current) => ({ ...current, recurrence: e.target.value as "none" | "weekly", repeat_until: e.target.value === "weekly" ? (current.repeat_until ?? addDays(current.date, 84)) : null }))}><option value="none">{l("不重复", "Does not repeat")}</option><option value="weekly">{l("每周", "Weekly")}</option></select></label>}
@@ -449,6 +450,8 @@ export function CalendarPage() {
     })();
     return controller;
   }, [l, rangeEnd, rangeStart]);
+  const latestRefreshRef = useRef(refresh);
+  latestRefreshRef.current = refresh;
 
   useEffect(() => {
     const controller = refresh();
@@ -486,8 +489,10 @@ export function CalendarPage() {
         { ...inputFromEvent(event), completed: !event.completed },
         event.revision,
       );
+      refreshEpochRef.current += 1;
       setEvents((current) => current.map((item) =>
         item.id === updated.id ? { ...item, ...updated } : item));
+      void latestRefreshRef.current();
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : l("待办更新失败", "Could not update to-do"));
     } finally {
@@ -522,22 +527,42 @@ export function CalendarPage() {
             {dates.map((date) => {
               const dayEvents = byDate.get(date) ?? [];
               const blocks = blocksFor(dayEvents);
+              const completedTodoBlocks = blocks.filter((block) =>
+                block.events.length === 1
+                && block.events[0].event_type === "todo"
+                && block.events[0].completed);
+              const activeBlocks = blocks.filter((block) => !completedTodoBlocks.includes(block));
               const dateValue = fromDate(date);
               const outside = view === "month" && dateValue.getMonth() !== currentMonth;
+              const renderBlock = (block: DayBlock) => block.events.length > 1
+                ? <ConflictStack key={block.key} events={block.events} onExpand={() => setConflict(block.events)} />
+                : block.events[0].event_type === "todo"
+                  ? <TodoNote key={block.key} event={block.events[0]} busy={togglingTodoIds.has(block.events[0].id)} onOpen={() => openEvent(block.events[0])} onToggle={() => void toggleTodo(block.events[0])} />
+                  : <EventNote key={block.key} event={block.events[0]} onOpen={() => openEvent(block.events[0])} />;
               return (
                 <section key={date} className={`group min-w-0 border-b border-r border-line p-1.5 last:border-r-0 ${view === "month" ? "h-[148px]" : "min-h-[560px]"} ${outside ? "bg-panel-2/45" : "bg-panel"}`}>
                   <div className="mb-1 flex h-7 items-center justify-between gap-1">
                     <span className={`flex h-7 min-w-7 items-center justify-center text-xs tabular-nums ${date === today ? "rounded-full bg-accent font-semibold text-accent-ink" : outside ? "text-ink-3" : "text-ink-2"}`}>{dateValue.getDate()}</span>
                     <button type="button" className="h-6 w-6 rounded text-ink-3 opacity-100 transition-opacity hover:bg-panel-2 hover:text-ink sm:opacity-0 sm:group-hover:opacity-100 sm:focus:opacity-100" aria-label={l(`在 ${date} 新建日程`, `Add event on ${date}`)} title={l("新建日程", "New event")} onClick={() => setEditor({ date, event: null })}>＋</button>
                   </div>
-                  <div className={`space-y-1.5 ${view === "month" ? "max-h-[108px] overflow-y-auto pr-0.5" : "space-y-2"}`}>
-                    {blocks.map((block) => block.events.length > 1
-                      ? <ConflictStack key={block.key} events={block.events} onExpand={() => setConflict(block.events)} />
-                      : block.events[0].event_type === "todo"
-                        ? <TodoNote key={block.key} event={block.events[0]} busy={togglingTodoIds.has(block.events[0].id)} onOpen={() => openEvent(block.events[0])} onToggle={() => void toggleTodo(block.events[0])} />
-                        : <EventNote key={block.key} event={block.events[0]} onOpen={() => openEvent(block.events[0])} />)}
-                    {loading && blocks.length === 0 && <span className="block h-8 animate-pulse bg-panel-2" style={{ borderRadius: 3 }} />}
-                  </div>
+                  {view === "month" ? (
+                    <div className="flex h-[108px] min-h-0 flex-col gap-1">
+                      <div className="min-h-0 flex-1 space-y-1.5 overflow-y-auto pr-0.5">
+                        {activeBlocks.map(renderBlock)}
+                        {loading && blocks.length === 0 && <span className="block h-8 animate-pulse bg-panel-2" style={{ borderRadius: 3 }} />}
+                      </div>
+                      {completedTodoBlocks.length > 0 && (
+                        <div className="max-h-[42px] shrink-0 space-y-1 overflow-y-auto border-t border-line pt-1 pr-0.5" aria-label={l("已完成待办", "Completed to-dos")}>
+                          {completedTodoBlocks.map(renderBlock)}
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      {blocks.map(renderBlock)}
+                      {loading && blocks.length === 0 && <span className="block h-8 animate-pulse bg-panel-2" style={{ borderRadius: 3 }} />}
+                    </div>
+                  )}
                 </section>
               );
             })}

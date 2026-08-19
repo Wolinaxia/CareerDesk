@@ -41,6 +41,11 @@ test("to-dos use compact notes and toggle into a struck-through completed state"
   assert.match(page, /type="checkbox"/);
   assert.match(page, /event\.completed \? "line-through"/);
   assert.match(page, /completed: !event\.completed/);
+  assert.match(page, /latestRefreshRef\.current = refresh/);
+  assert.match(page, /refreshEpochRef\.current \+= 1;[\s\S]*void latestRefreshRef\.current\(\)/);
   assert.match(page, /event_type !== "todo"/);
   assert.match(page, /recurrence: todo \? "none" : current\.recurrence/);
+  assert.match(page, /checked=\{form\.completed\}/);
+  assert.match(page, /completedTodoBlocks/);
+  assert.match(page, /已完成待办/);
 });

@@ -261,6 +261,33 @@ def test_calendar_schema_atomically_upgrades_legacy_weekly_constraint(tmp_path):
     assert row == ("2026-09-07", "2026-09-07", 0)
 
 
+def test_calendar_schema_upgrade_preserves_existing_completed_values(tmp_path):
+    db_path = str(tmp_path / "intermediate-calendar.db")
+    init_db(db_path)
+    intermediate_schema = calendar_repository.EXTENSION_SCHEMA.replace(
+        " AND repeat_until IS NOT NULL", "",
+    )
+    timestamp = now_iso()
+    with transaction(db_path) as conn:
+        conn.executescript(intermediate_schema)
+        conn.execute(
+            "INSERT INTO extension_calendar_events ("
+            "user_id, title, event_type, priority, event_date, start_time, end_time, "
+            "recurrence, repeat_until, completed, created_time, updated_time) "
+            "VALUES ('me', '已完成旧待办', 'todo', 'medium', '2026-09-07', NULL, NULL, "
+            "'none', NULL, 1, ?, ?)",
+            (timestamp, timestamp),
+        )
+
+    calendar_repository.ensure_schema(db_path)
+
+    with transaction(db_path) as conn:
+        row = conn.execute(
+            "SELECT event_type, completed FROM extension_calendar_events"
+        ).fetchone()
+    assert row == ("todo", 1)
+
+
 def test_application_delete_detaches_calendar_event(calendar_client):
     client, db_path = calendar_client
     timestamp = now_iso()
