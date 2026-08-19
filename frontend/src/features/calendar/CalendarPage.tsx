@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocalizer } from "../../i18n/useLocalizer";
 import {
   createCalendarEvent,
@@ -175,6 +175,60 @@ function blocksFor(events: CalendarOccurrence[]): DayBlock[] {
   return blocks;
 }
 
+function useModalDialog(onClose: () => void, closeEnabled = true) {
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const onCloseRef = useRef(onClose);
+  const closeEnabledRef = useRef(closeEnabled);
+  const openerRef = useRef<HTMLElement | null>(
+    document.activeElement instanceof HTMLElement ? document.activeElement : null,
+  );
+  onCloseRef.current = onClose;
+  closeEnabledRef.current = closeEnabled;
+
+  useEffect(() => {
+    const dialog = dialogRef.current;
+    if (!dialog) return;
+    const focusableSelector = "button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [href], [tabindex]:not([tabindex='-1'])";
+    const focusable = () => Array.from(dialog.querySelectorAll<HTMLElement>(focusableSelector));
+    const frame = window.requestAnimationFrame(() => {
+      if (!dialog.contains(document.activeElement)) {
+        (dialog.querySelector<HTMLElement>("[autofocus]") ?? focusable()[0] ?? dialog).focus();
+      }
+    });
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && closeEnabledRef.current) {
+        event.preventDefault();
+        onCloseRef.current();
+        return;
+      }
+      if (event.key !== "Tab") return;
+      const items = focusable();
+      if (items.length === 0) {
+        event.preventDefault();
+        dialog.focus();
+        return;
+      }
+      const first = items[0];
+      const last = items[items.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      document.removeEventListener("keydown", handleKeyDown);
+      openerRef.current?.focus();
+    };
+  }, []);
+
+  return dialogRef;
+}
+
 function EventDialog({
   initialDate,
   event,
@@ -196,9 +250,14 @@ function EventDialog({
   const [allDay, setAllDay] = useState(event ? event.start_time === null : false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const dialogRef = useModalDialog(onClose, !busy);
 
   async function save() {
     if (!form.title.trim() || busy) return;
+    if (form.recurrence === "weekly" && !form.repeat_until) {
+      setError(l("请选择重复截止日期", "Choose when the weekly series ends"));
+      return;
+    }
     setBusy(true);
     setError("");
     const payload = {
@@ -206,7 +265,7 @@ function EventDialog({
       title: form.title.trim(),
       start_time: allDay ? null : form.start_time,
       end_time: allDay ? null : form.end_time,
-      repeat_until: form.recurrence === "weekly" ? form.repeat_until : null,
+      repeat_until: form.recurrence === "weekly" ? (form.repeat_until || null) : null,
       location: form.location?.trim() || null,
       note: form.note?.trim() || null,
     };
@@ -237,7 +296,7 @@ function EventDialog({
   const field = "input w-full";
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/35 p-0 sm:items-center sm:p-6" role="presentation" onMouseDown={(e) => { if (e.target === e.currentTarget && !busy) onClose(); }}>
-      <div role="dialog" aria-modal="true" aria-labelledby="calendar-editor-title" className="max-h-[92vh] w-full overflow-y-auto rounded-t-2xl border border-line bg-panel p-5 shadow-2xl sm:max-w-2xl sm:rounded-lg sm:p-6">
+      <div ref={dialogRef} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby="calendar-editor-title" className="max-h-[92vh] w-full overflow-y-auto rounded-t-2xl border border-line bg-panel p-5 shadow-2xl sm:max-w-2xl sm:rounded-lg sm:p-6">
         <div className="mb-5 flex items-center justify-between gap-4">
           <h2 id="calendar-editor-title" className="text-lg font-semibold">
             {event ? l("编辑日程", "Edit event") : l("新建日程", "New event")}
@@ -249,7 +308,7 @@ function EventDialog({
           <label className="sm:col-span-2"><span className="mb-1 block text-xs font-medium text-ink-2">{l("标题", "Title")}</span><input autoFocus className={field} value={form.title} maxLength={120} onChange={(e) => setForm((current) => ({ ...current, title: e.target.value }))} /></label>
           <label><span className="mb-1 block text-xs font-medium text-ink-2">{l("类型", "Type")}</span><select className={field} value={form.event_type} onChange={(e) => setForm((current) => ({ ...current, event_type: e.target.value as CalendarEventType }))}>{EVENT_TYPES.map((type) => <option key={type} value={type}>{labels.type[type]}</option>)}</select></label>
           <div><span className="mb-1 block text-xs font-medium text-ink-2">{l("优先级", "Priority")}</span><div className="segmented grid grid-cols-3">{PRIORITIES.map((priority) => <button key={priority} type="button" aria-pressed={form.priority === priority} className={`segmented-item ${form.priority === priority ? "segmented-on" : ""}`} onClick={() => setForm((current) => ({ ...current, priority }))}>{labels.priority[priority]}</button>)}</div></div>
-          <label><span className="mb-1 block text-xs font-medium text-ink-2">{l("日期", "Date")}</span><input type="date" className={field} value={form.date} onChange={(e) => setForm((current) => ({ ...current, date: e.target.value }))} /></label>
+          <label><span className="mb-1 block text-xs font-medium text-ink-2">{form.recurrence === "weekly" ? l("系列首次日期", "Series start date") : l("日期", "Date")}</span><input type="date" className={field} value={form.date} onChange={(e) => setForm((current) => ({ ...current, date: e.target.value }))} /></label>
           <label className="flex items-end gap-2 pb-2 text-sm"><input type="checkbox" checked={allDay} onChange={(e) => setAllDay(e.target.checked)} />{l("全天事项", "All-day event")}</label>
           {!allDay && <><label><span className="mb-1 block text-xs font-medium text-ink-2">{l("开始时间", "Start")}</span><input type="time" className={field} value={form.start_time ?? "09:00"} onChange={(e) => setForm((current) => ({ ...current, start_time: e.target.value }))} /></label><label><span className="mb-1 block text-xs font-medium text-ink-2">{l("结束时间", "End")}</span><input type="time" className={field} value={form.end_time ?? "10:00"} onChange={(e) => setForm((current) => ({ ...current, end_time: e.target.value }))} /></label></>}
           <label><span className="mb-1 block text-xs font-medium text-ink-2">{l("重复", "Repeat")}</span><select className={field} value={form.recurrence} onChange={(e) => setForm((current) => ({ ...current, recurrence: e.target.value as "none" | "weekly", repeat_until: e.target.value === "weekly" ? (current.repeat_until ?? addDays(current.date, 84)) : null }))}><option value="none">{l("不重复", "Does not repeat")}</option><option value="weekly">{l("每周", "Weekly")}</option></select></label>
@@ -258,7 +317,7 @@ function EventDialog({
           <label className="sm:col-span-2"><span className="mb-1 block text-xs font-medium text-ink-2">{l("地点", "Location")}</span><input className={field} value={form.location ?? ""} maxLength={2000} onChange={(e) => setForm((current) => ({ ...current, location: e.target.value }))} /></label>
           <label className="sm:col-span-2"><span className="mb-1 block text-xs font-medium text-ink-2">{l("备注", "Notes")}</span><textarea className={`${field} min-h-20 resize-y`} value={form.note ?? ""} maxLength={2000} onChange={(e) => setForm((current) => ({ ...current, note: e.target.value }))} /></label>
         </div>
-        {event?.recurrence === "weekly" && <p className="mt-3 text-xs text-ink-3">{l("修改会应用到这组每周日程。", "Changes apply to this weekly series.")}</p>}
+        {form.recurrence === "weekly" && <p className="mt-3 text-xs text-ink-3">{l("修改会应用到整组每周日程，不能只修改当前这一次。", "Changes apply to the full weekly series, not only this occurrence.")}</p>}
         {error && <p role="alert" className="mt-3 text-sm text-bad">{error}</p>}
         <div className="mt-5 flex items-center justify-between gap-3">
           <div>{event && <button type="button" className="btn btn-danger" onClick={() => void remove()} disabled={busy}>{l("删除", "Delete")}</button>}</div>
@@ -272,10 +331,11 @@ function EventDialog({
 function ConflictDialog({ events, onClose, onEdit }: { events: CalendarOccurrence[]; onClose: () => void; onEdit: (event: CalendarOccurrence) => void }) {
   const l = useLocalizer();
   const labels = useCalendarLabels();
+  const dialogRef = useModalDialog(onClose);
   const ordered = [...events].sort((left, right) => (left.conflict_rank ?? 99) - (right.conflict_rank ?? 99));
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/35 sm:items-center sm:p-6" role="presentation" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <div role="dialog" aria-modal="true" aria-labelledby="conflict-title" className="w-full rounded-t-2xl border border-line bg-panel p-5 shadow-2xl sm:max-w-xl sm:rounded-lg sm:p-6">
+      <div ref={dialogRef} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby="conflict-title" className="w-full rounded-t-2xl border border-line bg-panel p-5 shadow-2xl sm:max-w-xl sm:rounded-lg sm:p-6">
         <div className="mb-4 flex items-start justify-between gap-4"><div><h2 id="conflict-title" className="text-lg font-semibold">{l("日程撞车", "Schedule conflict")}</h2><p className="mt-1 text-sm text-ink-3">{l("已按优先级从高到低排列。", "Ordered from highest to lowest priority.")}</p></div><button type="button" className="btn h-9 w-9 p-0" aria-label={l("关闭", "Close")} onClick={onClose}>×</button></div>
         <div className="space-y-2">{ordered.map((event) => <button type="button" key={`${event.id}-${event.occurrence_date}`} onClick={() => onEdit(event)} className={`w-full border p-3 text-left shadow-sm transition-transform hover:-translate-y-0.5 ${priorityStyle(event.priority)}`} style={{ borderRadius: 3 }}><span className="flex items-center gap-2"><span className="text-xs font-semibold">{labels.priority[event.priority]}</span><span className="font-semibold">{event.title}</span><span className="ml-auto text-xs">{event.start_time}–{event.end_time}</span></span>{(event.application_company || event.location) && <span className="mt-1 block text-xs text-ink-2">{event.application_company ? `${event.application_company} · ${event.application_position}` : ""}{event.application_company && event.location ? " · " : ""}{event.location}</span>}</button>)}</div>
       </div>
@@ -293,29 +353,43 @@ export function CalendarPage() {
   const [error, setError] = useState("");
   const [editor, setEditor] = useState<{ date: string; event: CalendarEvent | null } | null>(null);
   const [conflict, setConflict] = useState<CalendarOccurrence[] | null>(null);
+  const refreshEpochRef = useRef(0);
+  const refreshControllerRef = useRef<AbortController | null>(null);
 
   const dates = useMemo(() => view === "month" ? monthGrid(anchor) : weekGrid(anchor), [anchor, view]);
   const rangeStart = dates[0];
   const rangeEnd = dates[dates.length - 1];
 
-  async function refresh() {
+  const refresh = useCallback(() => {
+    refreshControllerRef.current?.abort();
+    const controller = new AbortController();
+    const epoch = ++refreshEpochRef.current;
+    refreshControllerRef.current = controller;
     setLoading(true);
     setError("");
-    try {
-      const [nextEvents, nextApplications] = await Promise.all([
-        getCalendarEvents(rangeStart, rangeEnd),
-        getCalendarApplications(),
-      ]);
-      setEvents(nextEvents);
-      setApplications(nextApplications);
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : l("日程加载失败", "Could not load calendar"));
-    } finally {
-      setLoading(false);
-    }
-  }
+    void (async () => {
+      try {
+        const [nextEvents, nextApplications] = await Promise.all([
+          getCalendarEvents(rangeStart, rangeEnd, controller.signal),
+          getCalendarApplications(controller.signal),
+        ]);
+        if (epoch !== refreshEpochRef.current || controller.signal.aborted) return;
+        setEvents(nextEvents);
+        setApplications(nextApplications);
+      } catch (caught) {
+        if (epoch !== refreshEpochRef.current || controller.signal.aborted) return;
+        setError(caught instanceof Error ? caught.message : l("日程加载失败", "Could not load calendar"));
+      } finally {
+        if (epoch === refreshEpochRef.current && !controller.signal.aborted) setLoading(false);
+      }
+    })();
+    return controller;
+  }, [l, rangeEnd, rangeStart]);
 
-  useEffect(() => { void refresh(); }, [rangeStart, rangeEnd]);
+  useEffect(() => {
+    const controller = refresh();
+    return () => controller.abort();
+  }, [refresh]);
 
   const byDate = useMemo(() => {
     const result = new Map<string, CalendarOccurrence[]>();
@@ -367,7 +441,7 @@ export function CalendarPage() {
                 <section key={date} className={`group min-w-0 border-b border-r border-line p-1.5 last:border-r-0 ${view === "month" ? "h-[148px]" : "min-h-[560px]"} ${outside ? "bg-panel-2/45" : "bg-panel"}`}>
                   <div className="mb-1 flex h-7 items-center justify-between gap-1">
                     <span className={`flex h-7 min-w-7 items-center justify-center text-xs tabular-nums ${date === today ? "rounded-full bg-accent font-semibold text-accent-ink" : outside ? "text-ink-3" : "text-ink-2"}`}>{dateValue.getDate()}</span>
-                    <button type="button" className="h-6 w-6 rounded text-ink-3 opacity-0 transition-opacity hover:bg-panel-2 hover:text-ink group-hover:opacity-100 focus:opacity-100" aria-label={l(`在 ${date} 新建日程`, `Add event on ${date}`)} title={l("新建日程", "New event")} onClick={() => setEditor({ date, event: null })}>＋</button>
+                    <button type="button" className="h-6 w-6 rounded text-ink-3 opacity-100 transition-opacity hover:bg-panel-2 hover:text-ink sm:opacity-0 sm:group-hover:opacity-100 sm:focus:opacity-100" aria-label={l(`在 ${date} 新建日程`, `Add event on ${date}`)} title={l("新建日程", "New event")} onClick={() => setEditor({ date, event: null })}>＋</button>
                   </div>
                   <div className={`space-y-1.5 ${view === "month" ? "max-h-[108px] overflow-y-auto pr-0.5" : "space-y-2"}`}>
                     {blocks.map((block) => block.events.length > 1

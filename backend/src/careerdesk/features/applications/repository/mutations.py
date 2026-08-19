@@ -55,6 +55,13 @@ def resolve_application_by_name(
     return {"status": "not_found"}
 
 
+def _calendar_events_table_exists(conn: Connection) -> bool:
+    return conn.execute(
+        "SELECT 1 FROM sqlite_schema WHERE type = 'table' "
+        "AND name = 'extension_calendar_events'"
+    ).fetchone() is not None
+
+
 def _delete_application_in_transaction(
     conn: Connection,
     user_id: str,
@@ -94,6 +101,13 @@ def _delete_application_in_transaction(
         "WHERE user_id = ? AND application_id = ?",
         (user_id, application_id),
     ).rowcount
+    if _calendar_events_table_exists(conn):
+        conn.execute(
+            "UPDATE extension_calendar_events SET application_id = NULL, "
+            "revision = revision + 1, updated_time = ? "
+            "WHERE user_id = ? AND application_id = ?",
+            (now_iso(), user_id, application_id),
+        )
     deleted = conn.execute(
         "DELETE FROM applications WHERE user_id = ? AND id = ?",
         (user_id, application_id),
@@ -181,6 +195,14 @@ def _merge_applications_in_transaction(
         "WHERE user_id = ? AND application_id = ?",
         (destination_id, timestamp, user_id, source_id),
     ).rowcount
+    calendar_events = 0
+    if _calendar_events_table_exists(conn):
+        calendar_events = conn.execute(
+            "UPDATE extension_calendar_events SET application_id = ?, "
+            "revision = revision + 1, updated_time = ? "
+            "WHERE user_id = ? AND application_id = ?",
+            (destination_id, timestamp, user_id, source_id),
+        ).rowcount
 
     changed = conn.execute(
         "UPDATE applications SET department = ?, channel = ?, jd_text = ?, "
@@ -226,6 +248,7 @@ def _merge_applications_in_transaction(
         "status": "ok",
         "source_application_id": source_id,
         "destination_application_id": destination_id,
+        "calendar_events_rebound": calendar_events,
         "moved": {
             "timeline_entries": timeline_entries,
             "questions": questions,

@@ -1402,6 +1402,7 @@ def approve_application_merge_operation(db_path: str, user_id: str,
                             final_projection=bundle.final_projection,
                             destination_company=proposal.destination.company,
                         )
+                        calendar_events_rebound = raw_result.pop("calendar_events_rebound")
                         moved_values = raw_result["moved"]
                         # A changed JD intentionally fires the schema receipt-invalidation
                         # trigger, whose UPDATE is included in sqlite total_changes.
@@ -1409,7 +1410,8 @@ def approve_application_merge_operation(db_path: str, user_id: str,
                             destination_jd_text != bundle.final_projection["jd_text"]
                         )
                         expected_direct_changes = (
-                            sum(moved_values.values()) + 2 + jd_receipt_invalidated
+                            sum(moved_values.values()) + calendar_events_rebound
+                            + 2 + jd_receipt_invalidated
                         )
                         if conn.total_changes - changes_before_executor != expected_direct_changes:
                             raise ApplicationMergeOperationConflict(

@@ -10,6 +10,7 @@ from careerdesk.agentic.tools.manage_timeline import UpdateApplicationTool
 from careerdesk.platform.database import init_db, read_connection, transaction
 from careerdesk.features.applications import operations
 from careerdesk.features.applications.operations import merge as merge_operations
+from careerdesk.features.calendar.repository import ensure_schema as ensure_calendar_schema
 
 
 NOW = "2026-07-13T20:00:00+00:00"
@@ -151,6 +152,34 @@ def prepare(
         destination_position=destination[1],
         proposal_recorder=proposal_recorder,
     )
+
+
+def test_merge_rebinds_calendar_events_to_destination(tmp_path):
+    db_path = make_db(tmp_path)
+    ensure_calendar_schema(db_path)
+    with transaction(db_path) as conn:
+        source_id = add_application(conn, "u1", "A", "P1")
+        destination_id = add_application(conn, "u1", "B", "P2")
+        event_id = conn.execute(
+            "INSERT INTO extension_calendar_events ("
+            "user_id, title, event_type, priority, event_date, start_time, end_time, "
+            "recurrence, repeat_until, application_id, created_time, updated_time) "
+            "VALUES ('u1', '一面', 'interview', 'high', '2026-09-07', '09:00', "
+            "'10:00', 'none', NULL, ?, ?, ?)",
+            (source_id, NOW, NOW),
+        ).lastrowid
+
+    proposal = prepare(db_path)
+    completed = operations.approve_application_merge_operation(
+        db_path, "u1", proposal["operation_id"],
+    )
+
+    assert completed["state"] == "completed"
+    assert read_rows(
+        db_path,
+        "SELECT application_id, revision FROM extension_calendar_events WHERE id = ?",
+        event_id,
+    ) == [(destination_id, 2)]
 
 
 def test_prepare_is_zero_business_write_and_same_direction_reuses(tmp_path):

@@ -65,6 +65,8 @@ def create_event(
             user_id,
             request.model_dump(),
         )
+    except repository.CalendarApplicationConflict as error:
+        raise HTTPException(status_code=409, detail=str(error)) from None
     except ValueError as error:
         raise HTTPException(status_code=422, detail=str(error)) from None
 
@@ -83,6 +85,8 @@ def update_event(
             request.model_dump(),
         )
     except repository.CalendarConflict as error:
+        raise HTTPException(status_code=409, detail=str(error)) from None
+    except repository.CalendarApplicationConflict as error:
         raise HTTPException(status_code=409, detail=str(error)) from None
     except ValueError as error:
         raise HTTPException(status_code=422, detail=str(error)) from None

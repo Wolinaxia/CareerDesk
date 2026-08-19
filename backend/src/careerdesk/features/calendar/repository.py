@@ -37,7 +37,7 @@ CREATE TABLE IF NOT EXISTS extension_calendar_events (
     CHECK (start_time IS NULL OR end_time > start_time),
     CHECK (
         (recurrence = 'none' AND repeat_until IS NULL)
-        OR (recurrence = 'weekly' AND repeat_until >= event_date)
+        OR (recurrence = 'weekly' AND repeat_until IS NOT NULL AND repeat_until >= event_date)
     )
 ) STRICT;
 CREATE INDEX IF NOT EXISTS idx_extension_calendar_user_date
@@ -59,10 +59,47 @@ class CalendarConflict(RuntimeError):
     """The event changed since the editor loaded it."""
 
 
+class CalendarApplicationConflict(RuntimeError):
+    """The application selected by the editor no longer exists."""
+
+
 def ensure_schema(db_path: str) -> None:
     """Create the manifest-compatible extension table for existing installations."""
-    with transaction(db_path) as conn:
-        conn.executescript(EXTENSION_SCHEMA)
+    with read_connection(db_path) as conn:
+        existing = conn.execute(
+            "SELECT sql FROM sqlite_schema WHERE type = 'table' "
+            "AND name = 'extension_calendar_events'"
+        ).fetchone()
+        needs_constraint_upgrade = (
+            existing is not None
+            and "repeat_until IS NOT NULL" not in (existing[0] or "")
+        )
+        migration = ""
+        if needs_constraint_upgrade:
+            migration = """
+ALTER TABLE extension_calendar_events RENAME TO extension_calendar_events_legacy;
+DROP INDEX IF EXISTS idx_extension_calendar_user_date;
+"""
+        try:
+            conn.executescript(f"BEGIN IMMEDIATE;\n{migration}\n{EXTENSION_SCHEMA}")
+            if needs_constraint_upgrade:
+                conn.execute(
+                    "INSERT INTO extension_calendar_events ("
+                    "id, user_id, title, event_type, priority, event_date, start_time, "
+                    "end_time, recurrence, repeat_until, location, note, application_id, "
+                    "revision, created_time, updated_time) "
+                    "SELECT id, user_id, title, event_type, priority, event_date, start_time, "
+                    "end_time, recurrence, CASE WHEN recurrence = 'weekly' "
+                    "AND repeat_until IS NULL THEN event_date ELSE repeat_until END, "
+                    "location, note, application_id, revision, created_time, updated_time "
+                    "FROM extension_calendar_events_legacy"
+                )
+                conn.execute("DROP TABLE extension_calendar_events_legacy")
+            conn.commit()
+        except Exception:
+            if conn.in_transaction:
+                conn.rollback()
+            raise
 
 
 def _application_exists(conn, user_id: str, application_id: int | None) -> bool:
@@ -100,7 +137,7 @@ def create_event(db_path: str, user_id: str, fields: dict) -> dict:
     with transaction(db_path, busy_timeout_ms=INTERACTIVE_BUSY_TIMEOUT_MS) as conn:
         conn.execute("BEGIN IMMEDIATE")
         if not _application_exists(conn, user_id, fields["application_id"]):
-            raise ValueError("关联岗位不存在")
+            raise CalendarApplicationConflict("关联岗位不存在或已被删除")
         timestamp = now_iso()
         cursor = conn.execute(
             "INSERT INTO extension_calendar_events ("
@@ -143,7 +180,7 @@ def update_event(db_path: str, user_id: str, event_id: int, fields: dict) -> dic
         if existing[0] != fields["expected_revision"]:
             raise CalendarConflict("日程已在其他窗口修改，请刷新后重试")
         if not _application_exists(conn, user_id, fields["application_id"]):
-            raise ValueError("关联岗位不存在")
+            raise CalendarApplicationConflict("关联岗位不存在或已被删除")
         changed = conn.execute(
             "UPDATE extension_calendar_events SET title = ?, event_type = ?, priority = ?, "
             "event_date = ?, start_time = ?, end_time = ?, recurrence = ?, repeat_until = ?, "
@@ -194,7 +231,10 @@ def _occurrence_dates(event: dict, range_start: date, range_end: date):
         if range_start <= first <= range_end:
             yield first
         return
-    final = date.fromisoformat(event["repeat_until"])
+    repeat_until = event.get("repeat_until")
+    if repeat_until is None:
+        return
+    final = date.fromisoformat(repeat_until)
     current = first
     if current < range_start:
         current += timedelta(days=((range_start - current).days + 6) // 7 * 7)

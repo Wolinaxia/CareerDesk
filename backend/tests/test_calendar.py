@@ -1,9 +1,16 @@
 """Calendar recurrence, conflicts, ownership, and HTTP contracts."""
 
+import sqlite3
+from datetime import date
+
 import pytest
 from fastapi.testclient import TestClient
 
 from careerdesk.core.config import get_settings
+from careerdesk.features.applications.repository.mutations import (
+    _delete_application_in_transaction,
+)
+from careerdesk.features.calendar import repository as calendar_repository
 from careerdesk.platform.database import init_db, now_iso, transaction
 
 
@@ -87,7 +94,7 @@ def test_event_binding_update_conflict_and_delete_are_tenant_safe(calendar_clien
     assert client.post(
         "/api/calendar/events",
         json=event(application_id=foreign_application_id),
-    ).status_code == 422
+    ).status_code == 409
     created = client.post(
         "/api/calendar/events",
         json=event(title="一面", event_type="interview", priority="high", application_id=application_id),
@@ -129,3 +136,81 @@ def test_calendar_rejects_invalid_time_and_unbounded_ranges(calendar_client):
 def test_calendar_extension_remains_valid_on_next_database_start(calendar_client):
     _client, db_path = calendar_client
     init_db(db_path)
+
+
+def test_calendar_schema_rejects_null_weekly_end_and_projection_is_defensive(calendar_client):
+    _client, db_path = calendar_client
+    timestamp = now_iso()
+    with pytest.raises(sqlite3.IntegrityError), transaction(db_path) as conn:
+        conn.execute(
+            "INSERT INTO extension_calendar_events ("
+            "user_id, title, event_type, priority, event_date, start_time, end_time, "
+            "recurrence, repeat_until, created_time, updated_time) "
+            "VALUES ('me', '异常系列', 'other', 'low', '2026-09-07', NULL, NULL, "
+            "'weekly', NULL, ?, ?)",
+            (timestamp, timestamp),
+        )
+
+    corrupt = event(recurrence="weekly", repeat_until=None)
+    assert list(calendar_repository._occurrence_dates(
+        corrupt, date(2026, 9, 1), date(2026, 9, 30),
+    )) == []
+
+
+def test_calendar_schema_atomically_upgrades_legacy_weekly_constraint(tmp_path):
+    db_path = str(tmp_path / "legacy-calendar.db")
+    init_db(db_path)
+    legacy_schema = calendar_repository.EXTENSION_SCHEMA.replace(
+        " AND repeat_until IS NOT NULL", "",
+    )
+    timestamp = now_iso()
+    with transaction(db_path) as conn:
+        conn.executescript(legacy_schema)
+        conn.execute(
+            "INSERT INTO extension_calendar_events ("
+            "user_id, title, event_type, priority, event_date, start_time, end_time, "
+            "recurrence, repeat_until, created_time, updated_time) "
+            "VALUES ('me', '旧系列', 'other', 'low', '2026-09-07', NULL, NULL, "
+            "'weekly', NULL, ?, ?)",
+            (timestamp, timestamp),
+        )
+
+    calendar_repository.ensure_schema(db_path)
+
+    with transaction(db_path) as conn:
+        sql = conn.execute(
+            "SELECT sql FROM sqlite_schema WHERE type='table' "
+            "AND name='extension_calendar_events'"
+        ).fetchone()[0]
+        row = conn.execute(
+            "SELECT event_date, repeat_until FROM extension_calendar_events"
+        ).fetchone()
+    assert "repeat_until IS NOT NULL" in sql
+    assert row == ("2026-09-07", "2026-09-07")
+
+
+def test_application_delete_detaches_calendar_event(calendar_client):
+    client, db_path = calendar_client
+    timestamp = now_iso()
+    with transaction(db_path) as conn:
+        application_id = conn.execute(
+            "INSERT INTO applications (user_id, company, position, created_time, updated_time) "
+            "VALUES ('me', '待删除公司', '工程师', ?, ?)",
+            (timestamp, timestamp),
+        ).lastrowid
+    created = client.post(
+        "/api/calendar/events",
+        json=event(title="关联面试", application_id=application_id),
+    ).json()
+
+    with transaction(db_path) as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        result = _delete_application_in_transaction(conn, "me", application_id)
+    assert result["status"] == "ok"
+
+    item = client.get(
+        "/api/calendar/events?start=2026-09-01&end=2026-09-30"
+    ).json()["items"][0]
+    assert item["id"] == created["id"]
+    assert item["application_id"] is None
+    assert item["revision"] == created["revision"] + 1
