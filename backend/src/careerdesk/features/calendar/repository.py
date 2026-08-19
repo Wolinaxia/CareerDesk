@@ -238,6 +238,16 @@ def delete_event(
         ).rowcount == 1
 
 
+def get_event(db_path: str, user_id: str, event_id: int) -> dict | None:
+    """Return one owned calendar item without expanding recurrence."""
+    with read_connection(db_path) as conn:
+        row = conn.execute(
+            _SELECT + "WHERE event.user_id = ? AND event.id = ?",
+            (user_id, event_id),
+        ).fetchone()
+    return None if row is None else _row(row)
+
+
 def _occurrence_dates(event: dict, range_start: date, range_end: date):
     first = date.fromisoformat(event["date"])
     if event["recurrence"] == "none":
