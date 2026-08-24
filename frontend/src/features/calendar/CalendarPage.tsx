@@ -91,23 +91,31 @@ function useCalendarLabels() {
   };
 }
 
-function EventNote({ event, onOpen }: { event: CalendarOccurrence; onOpen: () => void }) {
+function EventNote({
+  event,
+  expanded = false,
+  onOpen,
+}: {
+  event: CalendarOccurrence;
+  expanded?: boolean;
+  onOpen: () => void;
+}) {
   const l = useLocalizer();
   const labels = useCalendarLabels();
   return (
     <button
       type="button"
       onClick={onOpen}
-      className={`w-full border px-2 py-1.5 text-left shadow-sm transition-transform hover:-translate-y-0.5 ${priorityStyle(event.priority)}`}
+      className={`w-full border text-left shadow-sm transition-transform hover:-translate-y-0.5 ${expanded ? "min-h-[82px] px-3 py-2.5" : "px-2 py-1.5"} ${priorityStyle(event.priority)}`}
       style={{ borderRadius: 3 }}
       title={event.note ?? event.title}
     >
       <span className="flex min-w-0 items-center gap-1.5">
-        <span className="shrink-0 text-[10px] font-semibold">{labels.priority[event.priority]}</span>
-        <span className="min-w-0 flex-1 truncate text-xs font-semibold">{event.title}</span>
+        <span className={`shrink-0 font-semibold ${expanded ? "text-xs" : "text-[10px]"}`}>{labels.priority[event.priority]}</span>
+        <span className={`min-w-0 flex-1 font-semibold ${expanded ? "line-clamp-2 text-sm leading-5" : "truncate text-xs"}`}>{event.title}</span>
         {event.recurrence === "weekly" && <span aria-label={l("每周重复", "Repeats weekly")} className="text-[10px]">↻</span>}
       </span>
-      <span className="mt-0.5 block truncate text-[10px] text-ink-2">
+      <span className={`block truncate text-ink-2 ${expanded ? "mt-1.5 text-xs" : "mt-0.5 text-[10px]"}`}>
         {event.start_time ? `${event.start_time}–${event.end_time}` : l("全天", "All day")}
         {event.location ? ` · ${event.location}` : ""}
       </span>
@@ -156,9 +164,11 @@ function TodoNote({
 
 function ConflictStack({
   events,
+  expanded = false,
   onExpand,
 }: {
   events: CalendarOccurrence[];
+  expanded?: boolean;
   onExpand: () => void;
 }) {
   const l = useLocalizer();
@@ -169,7 +179,7 @@ function ConflictStack({
       type="button"
       onClick={onExpand}
       className="relative block w-full text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
-      style={{ height: 62 + (ordered.length - 1) * 11 }}
+      style={{ height: (expanded ? 82 : 62) + (ordered.length - 1) * 11 }}
       aria-label={l(`${ordered.length} 个冲突日程，展开比较`, `${ordered.length} conflicting events, compare`)}
     >
       {[...ordered].reverse().map((event, reverseIndex) => {
@@ -177,21 +187,21 @@ function ConflictStack({
         return (
           <span
             key={`${event.id}-${event.occurrence_date}`}
-            className={`absolute inset-x-0 block h-[62px] border px-2 py-1.5 shadow-sm ${priorityStyle(event.priority)}`}
+            className={`absolute inset-x-0 block border shadow-sm ${expanded ? "h-[82px] px-3 py-2.5" : "h-[62px] px-2 py-1.5"} ${priorityStyle(event.priority)}`}
             style={{ top: index * 11, zIndex: ordered.length - index, borderRadius: 3 }}
           >
             <span className="flex min-w-0 items-center gap-1.5">
-              <span className="shrink-0 text-[10px] font-semibold">
+              <span className={`shrink-0 font-semibold ${expanded ? "text-xs" : "text-[10px]"}`}>
                 {event.priority === "high" ? l("高", "High") : event.priority === "medium" ? l("中", "Medium") : l("低", "Low")}
               </span>
-              <span className="min-w-0 flex-1 truncate text-xs font-semibold">{event.title}</span>
+              <span className={`min-w-0 flex-1 font-semibold ${expanded ? "line-clamp-2 text-sm leading-5" : "truncate text-xs"}`}>{event.title}</span>
               {index === 0 && (
                 <span className="shrink-0 rounded-full bg-panel/75 px-1.5 py-0.5 text-[9px] font-semibold">
                   {l(`${ordered.length} 项冲突`, `${ordered.length} conflicts`)}
                 </span>
               )}
             </span>
-            <span className="mt-0.5 block truncate text-[10px] text-ink-2">
+            <span className={`block truncate text-ink-2 ${expanded ? "mt-1.5 text-xs" : "mt-0.5 text-[10px]"}`}>
               {event.start_time}–{event.end_time}{event.location ? ` · ${event.location}` : ""}
             </span>
           </span>
@@ -409,7 +419,7 @@ function ConflictDialog({ events, onClose, onEdit }: { events: CalendarOccurrenc
 
 export function CalendarPage() {
   const l = useLocalizer();
-  const [view, setView] = useState<CalendarView>("month");
+  const [view, setView] = useState<CalendarView>("week");
   const [anchor, setAnchor] = useState(localDate);
   const [events, setEvents] = useState<CalendarOccurrence[]>([]);
   const [applications, setApplications] = useState<CalendarApplication[]>([]);
@@ -534,11 +544,12 @@ export function CalendarPage() {
               const activeBlocks = blocks.filter((block) => !completedTodoBlocks.includes(block));
               const dateValue = fromDate(date);
               const outside = view === "month" && dateValue.getMonth() !== currentMonth;
+              const expandedNotes = view === "week";
               const renderBlock = (block: DayBlock) => block.events.length > 1
-                ? <ConflictStack key={block.key} events={block.events} onExpand={() => setConflict(block.events)} />
+                ? <ConflictStack key={block.key} events={block.events} expanded={expandedNotes} onExpand={() => setConflict(block.events)} />
                 : block.events[0].event_type === "todo"
                   ? <TodoNote key={block.key} event={block.events[0]} busy={togglingTodoIds.has(block.events[0].id)} onOpen={() => openEvent(block.events[0])} onToggle={() => void toggleTodo(block.events[0])} />
-                  : <EventNote key={block.key} event={block.events[0]} onOpen={() => openEvent(block.events[0])} />;
+                  : <EventNote key={block.key} event={block.events[0]} expanded={expandedNotes} onOpen={() => openEvent(block.events[0])} />;
               return (
                 <section key={date} className={`group min-w-0 border-b border-r border-line p-1.5 last:border-r-0 ${view === "month" ? "h-[148px]" : "min-h-[560px]"} ${outside ? "bg-panel-2/45" : "bg-panel"}`}>
                   <div className="mb-1 flex h-7 items-center justify-between gap-1">

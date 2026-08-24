@@ -26,6 +26,14 @@ test("calendar keeps day creation visible on touch and explains weekly edits", a
   assert.match(page, /form\.repeat_until \|\| null/);
 });
 
+test("calendar opens on this week with roomier event notes", async () => {
+  const page = await readFile(pageUrl, "utf8");
+  assert.match(page, /useState<CalendarView>\("week"\)/);
+  assert.match(page, /const expandedNotes = view === "week"/);
+  assert.match(page, /expanded=\{expandedNotes\}/);
+  assert.match(page, /expanded \? "min-h-\[82px\] px-3 py-2\.5"/);
+});
+
 test("calendar dialogs support escape, trapped focus, and focus restoration", async () => {
   const page = await readFile(pageUrl, "utf8");
   assert.match(page, /event\.key === "Escape"/);
