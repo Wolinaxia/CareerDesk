@@ -110,7 +110,7 @@ def test_resident_prompt_snapshot_is_stable():
     prompt = build_instructions(TrustedSkillCatalog(), conversation_search=False)
 
     assert hashlib.sha256(prompt.encode()).hexdigest() == (
-        "2ee8f726d6b6bc86a97c6282ae5297b16f185b5f3587a3a8b5e1e0a12bd9da98"
+        "b8f34420981d6a253bc5ee491d0812a89dec40f64f90c9e2bce0cd5da4395b04"
     )
 
 

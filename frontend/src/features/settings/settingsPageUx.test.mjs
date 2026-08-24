@@ -238,7 +238,8 @@ test("requested preference, storage, appearance, and feature copy stays exact", 
     readFile(grillUrl, "utf8"),
   ]);
 
-  assert.match(preferences, /管理求职助手记住的关于您的求职方向、城市和薪资等长期偏好/);
+  assert.match(preferences, /管理通用偏好和彼此独立的求职方向/);
+  assert.match(preferences, /不会混用不同方向的简历侧重/);
   assert.match(preferences, /点击每项右侧的“手动编辑”即可修改/);
   assert.match(preferences, /l\("手动编辑", "Edit manually"\)/);
   assert.doesNotMatch(preferences, /如果另一标签页先改了同一项/);

@@ -23,27 +23,47 @@ _BEHAVIOR_PREFERENCE_KEYS = (
     "response_format",
 )
 _MAX_BEHAVIOR_PREFERENCE_CHARS = 1_000
+_MAX_CAREER_PREFERENCE_CHARS = 7_000
 
 
-def _behavior_preferences(items: list[dict]) -> list[dict]:
-    by_key = {
-        item.get("key"): item
-        for item in items
+def _assistant_preferences(items: list[dict]) -> list[dict]:
+    """Select bounded preference data, keeping career tracks ahead of legacy keys."""
+    candidates = [
+        item for item in items
         if isinstance(item, dict)
         and isinstance(item.get("key"), str)
         and isinstance(item.get("value"), str)
-    }
+    ]
+
+    def priority(item: dict) -> tuple[int, str]:
+        key = item["key"]
+        if key == "career_strategy" or key.startswith("career_track."):
+            return (0, key)
+        if key.startswith("career_global."):
+            return (1, key)
+        return (2, key)
+
     selected: list[dict] = []
-    used = 0
-    for key in _BEHAVIOR_PREFERENCE_KEYS:
-        item = by_key.get(key)
-        if item is None:
+    behavior_used = 0
+    for item in candidates:
+        if item["key"] not in _BEHAVIOR_PREFERENCE_KEYS:
             continue
-        size = len(key) + len(item["value"])
-        if used + size > _MAX_BEHAVIOR_PREFERENCE_CHARS:
+        size = len(item["key"]) + len(item["value"])
+        if behavior_used + size > _MAX_BEHAVIOR_PREFERENCE_CHARS:
             continue
         selected.append(item)
-        used += size
+        behavior_used += size
+
+    career_used = 0
+    career_items = [
+        item for item in candidates if item["key"] not in _BEHAVIOR_PREFERENCE_KEYS
+    ]
+    for item in sorted(career_items, key=priority):
+        size = len(item["key"]) + len(item["value"])
+        if career_used + size > _MAX_CAREER_PREFERENCE_CHARS:
+            continue
+        selected.append(item)
+        career_used += size
     return selected
 
 
@@ -82,7 +102,7 @@ def build_career_assistant(db_path: str, llm, user_id: str, *,
         output_locale=output_locale,
     )
     try:
-        preference_items = _behavior_preferences(
+        preference_items = _assistant_preferences(
             preferences.list_current_preferences(db_path, user_id)["items"],
         )
     except (preferences.PreferenceProjectionConflict, ValueError):

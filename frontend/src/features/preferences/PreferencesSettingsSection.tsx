@@ -14,6 +14,7 @@ import {
   type PreferencesSnapshot,
 } from "./preferencesContract";
 import { subscribePreferenceInvalidation } from "./preferenceInvalidation";
+import { groupPreferences, preferenceFieldLabel } from "./preferenceScopes";
 import { usePreferenceItemCommands } from "./usePreferenceItemCommands";
 
 type Editor = {
@@ -103,6 +104,10 @@ export function PreferencesSettingsSection() {
     () => new Map(snapshot?.items.map((item) => [item.id, item]) ?? []),
     [snapshot],
   );
+  const preferenceGroups = useMemo(
+    () => groupPreferences(snapshot?.items ?? [], locale),
+    [locale, snapshot],
+  );
   const editorItem = editor ? itemById.get(editor.id) : undefined;
   const editorStale = editor !== null
     && (editorItem === undefined || editorItem.revision !== editor.baselineRevision);
@@ -163,7 +168,7 @@ export function PreferencesSettingsSection() {
             {l("长期偏好", "Long-term preferences")}
           </h2>
           <p className="mt-1 text-xs leading-relaxed text-ink-3">
-            {l("管理求职助手记住的关于您的求职方向、城市和薪资等长期偏好。点击每项右侧的“手动编辑”即可修改，内容只保存在本机。", "Manage the long-term preferences the career assistant remembers, such as career direction, cities, and compensation. Choose Edit manually beside an item to change it. Content stays on this device.")}
+            {l("管理通用偏好和彼此独立的求职方向。助手会根据当前岗位选用对应方向，不会混用不同方向的简历侧重。点击每项右侧的“手动编辑”即可修改，内容只保存在本机。", "Manage shared preferences and independent career tracks. The assistant selects the relevant track for the current role without blending resume strategies across tracks. Choose Edit manually beside an item to change it. Content stays on this device.")}
           </p>
         </div>
         <button
@@ -244,8 +249,21 @@ export function PreferencesSettingsSection() {
               {l(`共 ${snapshot.total} 项 · ${snapshot.total_chars} 个字符`, `${snapshot.total} items · ${snapshot.total_chars} characters`)}
               {loading || error ? l(" · 正在重新核对", " · Rechecking") : l(" · 已与本机记录同步", " · Synced with local records")}
             </p>
-            <ul className="divide-y divide-line rounded-xl border border-line">
-              {snapshot.items.map((item) => {
+            <div className="space-y-5">
+              {preferenceGroups.map((group) => (
+                <section key={group.id} aria-labelledby={`preference-group-${group.id}`}>
+                  <div className="mb-2 flex items-center gap-2">
+                    <h3 id={`preference-group-${group.id}`} className="text-xs font-semibold text-ink-2">
+                      {group.title}
+                    </h3>
+                    {group.kind === "track" && (
+                      <span className="rounded bg-accent-soft px-1.5 py-0.5 text-[11px] text-accent">
+                        {l("独立方向", "Independent track")}
+                      </span>
+                    )}
+                  </div>
+                  <ul className="divide-y divide-line border-y border-line">
+              {group.items.map((item) => {
                 const editing = editor?.id === item.id;
                 const confirmingDelete = deleteConfirmation?.id === item.id;
                 const valueIssue = editing
@@ -259,7 +277,7 @@ export function PreferencesSettingsSection() {
                     <div className="flex flex-wrap items-start justify-between gap-3">
                       <div className="min-w-0 flex-1">
                         <div className="flex flex-wrap items-baseline justify-between gap-2">
-                          <h3 className="break-words text-sm font-medium text-ink">{item.key}</h3>
+                          <h4 className="break-words text-sm font-medium text-ink">{preferenceFieldLabel(item.key, locale)}</h4>
                           <time dateTime={item.updated_time} className="text-xs tabular-nums text-ink-3">
                             {l(`版本 ${item.revision}`, `Revision ${item.revision}`)} · {formatDate(item.updated_time, locale, "dateTime")}
                           </time>
@@ -413,7 +431,10 @@ export function PreferencesSettingsSection() {
                   </li>
                 );
               })}
-            </ul>
+                  </ul>
+                </section>
+              ))}
+            </div>
           </div>
         )}
       </div>
