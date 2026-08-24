@@ -447,6 +447,15 @@ def _create_main_window(webview_module: Any) -> tuple[Any, DesktopBridge]:
     return window, bridge
 
 
+def _desktop_icon_path() -> str | None:
+    """Use the existing flag mark for source launches; bundles own their icon."""
+    if getattr(sys, "frozen", False):
+        return None
+    root = Path(os.environ.get("CAREERDESK_RESOURCE_ROOT", Path.cwd()))
+    icon = root / ("careerdesk.ico" if os.name == "nt" else "desktop/CareerDesk.icns")
+    return str(icon) if icon.is_file() else None
+
+
 def _disable_native_scroll_rubber_banding(window: Any) -> bool:
     """Disable only WKWebView's boundary elasticity, never wheel scrolling itself."""
     try:
@@ -810,7 +819,7 @@ def main() -> int:
         print(f"🔧 CareerDesk 桌面窗口模式 → {URL}（服务已就绪；关闭窗口即停止）")
         try:
             _create_main_window(webview)
-            webview.start()
+            webview.start(icon=_desktop_icon_path())
         except Exception as error:
             logging.getLogger("careerdesk.launcher").warning(
                 "native window failed to start error_type=%s detail=%s; using the browser instead",

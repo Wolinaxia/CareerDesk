@@ -19,7 +19,7 @@
   <a href="../backend/"><img alt="Backend FastAPI" src="https://img.shields.io/badge/Backend-FastAPI-009688?style=for-the-badge&amp;logo=fastapi&amp;logoColor=white" /></a>
   <a href="../frontend/"><img alt="Frontend React 19" src="https://img.shields.io/badge/Frontend-React%2019-61DAFB?style=for-the-badge&amp;logo=react&amp;logoColor=20232A" /></a>
   <br />
-  <a href="../backend/pyproject.toml"><img alt="Version 1.0.1" src="https://img.shields.io/badge/Version-v1.0.1-EA6B38?style=for-the-badge" /></a>
+  <a href="../backend/pyproject.toml"><img alt="Version 1.0.2" src="https://img.shields.io/badge/Version-v1.0.2-EA6B38?style=for-the-badge" /></a>
   <a href="https://github.com/xinhuangcs/CareerDesk/actions/workflows/unsigned-release.yml"><img alt="Build GitHub Actions" src="https://img.shields.io/badge/Build-GitHub%20Actions-6E78FF?style=for-the-badge&amp;logo=githubactions&amp;logoColor=white" /></a>
   <a href="../LICENSE"><img alt="License MIT" src="https://img.shields.io/badge/License-MIT-E1B800?style=for-the-badge" /></a>
 </p>
@@ -74,13 +74,19 @@ https://github.com/user-attachments/assets/5230d010-0f2d-493e-b088-3bbbd7969572
   <tr>
     <td width="100%" valign="top">
       <h3>🤝 Job Application Assistant</h3>
-      <p>A recruiting season can feel exhausting when you face it alone. Let the assistant organize roles, analyse applications, make plans, or simply keep you company for a chat.</p>
+      <p>A recruiting season can feel exhausting when you face it alone. Let the assistant organize roles, analyse applications, make plans, or simply keep you company for a chat. Long-term preferences support independent career tracks, preventing role criteria and résumé emphasis from being blended across paths. Upload PDFs, documents, workbooks, and images, or paste screenshots directly into the composer.</p>
+    </td>
+  </tr>
+  <tr>
+    <td width="100%" valign="top">
+      <h3>📅 Calendar and To-Dos</h3>
+      <p>Keep classes, career fairs, assessments, interviews, and deadlines in week or month views. Events support priorities, weekly recurrence, linked roles, and conflict comparison; timeless to-dos use smaller notes and can be checked off with a strike-through.</p>
     </td>
   </tr>
   <tr>
     <td width="100%" valign="top">
       <h3>🧠 Your Choice of Model</h3>
-      <p>Connect mainstream cloud models or local Ollama, vLLM, and SGLang. Even without a model, the application board remains available.</p>
+      <p>Connect mainstream cloud models, local Ollama, vLLM, and SGLang, or a custom OpenAI-compatible endpoint. Even without a model, local features such as the board and calendar remain available.</p>
     </td>
   </tr>
 </table>
@@ -121,11 +127,33 @@ Both are one-time steps.
 - The browser mode is fully functional; if you would rather have a standalone app window, install the Microsoft Edge WebView2 Runtime and reopen (the browser is used automatically when that component is missing).
 - For a desktop shortcut, double-click `Add-Desktop-Shortcut.cmd` inside the folder once; the icon it creates can be moved anywhere. Re-run it whenever you move the folder itself.
 
+### Custom OpenAI-compatible endpoint (source checkout)
+
+If your model service or gateway implements the OpenAI API, configure the project `.env` file:
+
+```dotenv
+APP_LLM_MODEL=openai_compatible:your-model
+APP_LLM_CONTEXT_WINDOW=use-the-provider-documented-value
+APP_LLM_MAX_OUTPUT_TOKENS=use-the-provider-documented-value
+OPENAI_BASE_URL=https://your-provider.example/v1
+OPENAI_API_KEY=your-key
+```
+
+Stop CareerDesk completely and restart it for the change to take effect. The endpoint must be an `http(s)` URL with an optional path and no embedded credentials, query parameters, or fragment. Use capacity values documented by the provider. Desktop builds expose model, credential, and network-permission controls in Settings.
+
 ## 🔐 Privacy and Security
 
 ### Local calendar MCP
 
 Source installations and desktop builds include `careerdesk-calendar-mcp`, which lets local MCP clients such as Codex manage calendar events and to-dos over standard input/output. It reuses CareerDesk's configured local user and data directory. **It is restricted to local stdio and must never be changed to SSE/HTTP or exposed on a network.** Writes use revisions to prevent concurrent overwrites; after an error or timeout, read the item again before retrying.
+
+For a source checkout, configure the following command as an MCP server:
+
+```text
+<repository>/backend/.venv/bin/python -m careerdesk.mcp.calendar_server
+```
+
+The tools cover listing, creating, updating, completing, and deleting events and to-dos, plus linked-role and conflict queries. Deletion additionally requires an explicit `confirm="DELETE"`. For desktop distributions, use the bundled `careerdesk-calendar-mcp` executable.
 
 ### Privacy
 

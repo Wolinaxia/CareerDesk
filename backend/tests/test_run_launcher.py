@@ -278,6 +278,28 @@ def test_native_scroll_configuration_disables_only_webview_rubber_banding():
     assert not launcher._disable_native_scroll_rubber_banding(unavailable_window)
 
 
+def test_source_launcher_uses_existing_flag_icon(monkeypatch, tmp_path):
+    icon = tmp_path / "desktop/CareerDesk.icns"
+    icon.parent.mkdir()
+    icon.write_bytes(b"flag-icon")
+    monkeypatch.setenv("CAREERDESK_RESOURCE_ROOT", str(tmp_path))
+    monkeypatch.setattr(launcher.sys, "frozen", False, raising=False)
+
+    assert launcher._desktop_icon_path() == str(icon)
+
+
+def test_frozen_launcher_leaves_icon_to_app_bundle(monkeypatch):
+    monkeypatch.setattr(launcher.sys, "frozen", True, raising=False)
+
+    assert launcher._desktop_icon_path() is None
+
+
+def test_native_start_receives_the_desktop_icon():
+    source = Path(launcher.__file__).read_text(encoding="utf-8")
+
+    assert "webview.start(icon=_desktop_icon_path())" in source
+
+
 def test_server_readiness_returns_only_after_started_and_thread_can_stop():
     class FakeServer:
         started = False

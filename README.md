@@ -19,7 +19,7 @@
   <a href="backend/"><img alt="后端 FastAPI" src="https://img.shields.io/badge/Backend-FastAPI-009688?style=for-the-badge&amp;logo=fastapi&amp;logoColor=white" /></a>
   <a href="frontend/"><img alt="前端 React 19" src="https://img.shields.io/badge/Frontend-React%2019-61DAFB?style=for-the-badge&amp;logo=react&amp;logoColor=20232A" /></a>
   <br />
-  <a href="backend/pyproject.toml"><img alt="版本 1.0.1" src="https://img.shields.io/badge/Version-v1.0.1-EA6B38?style=for-the-badge" /></a>
+  <a href="backend/pyproject.toml"><img alt="版本 1.0.2" src="https://img.shields.io/badge/Version-v1.0.2-EA6B38?style=for-the-badge" /></a>
   <a href="https://github.com/xinhuangcs/CareerDesk/actions/workflows/unsigned-release.yml"><img alt="构建 GitHub Actions" src="https://img.shields.io/badge/Build-GitHub%20Actions-6E78FF?style=for-the-badge&amp;logo=githubactions&amp;logoColor=white" /></a>
   <a href="LICENSE"><img alt="MIT 许可证" src="https://img.shields.io/badge/License-MIT-E1B800?style=for-the-badge" /></a>
 </p>
@@ -74,13 +74,19 @@ https://github.com/user-attachments/assets/5230d010-0f2d-493e-b088-3bbbd7969572
   <tr>
     <td width="100%" valign="top">
       <h3>🤝 求职智能助手</h3>
-      <p>一个人求职难免疲惫。让助手帮你整理岗位、分析投递、规划计划，或只是单纯陪你聊聊天。</p>
+      <p>一个人求职难免疲惫。让助手帮你整理岗位、分析投递、规划计划，或只是单纯陪你聊聊天。长期偏好支持多个彼此独立的求职方向，避免混用不同路线的岗位标准和简历侧重；还支持上传 PDF、文档、表格和图片，也可以在输入框直接粘贴截图。</p>
+    </td>
+  </tr>
+  <tr>
+    <td width="100%" valign="top">
+      <h3>📅 日程与待办</h3>
+      <p>把课程、招聘会、笔试、面试和截止日期放进周/月日历。日程支持优先级、每周重复、关联岗位和撞车比较；无具体时间的待办以更小的便签区分，完成后可直接勾选划掉。</p>
     </td>
   </tr>
   <tr>
     <td width="100%" valign="top">
       <h3>🧠 模型由你选择</h3>
-      <p>主流云端模型与本地 Ollama、vLLM、SGLang 都能接入；不配置模型也能使用求职看板功能。</p>
+      <p>主流云端模型、本地 Ollama、vLLM、SGLang，以及自定义 OpenAI-compatible 接口都能接入；不配置模型也能使用看板、日历等本地功能。</p>
     </td>
   </tr>
 </table>
@@ -121,11 +127,33 @@ https://github.com/user-attachments/assets/5230d010-0f2d-493e-b088-3bbbd7969572
 - 应用在浏览器里打开时功能完全相同；如果更想要独立的应用窗口，安装 Microsoft Edge WebView2 Runtime 后重新打开即可（缺少该组件时会自动改用浏览器）。
 - 想要桌面快捷方式：双击文件夹里的 `Add-Desktop-Shortcut.cmd` 一次；生成的桌面图标可以随意移动。以后挪动了文件夹，再双击一次刷新即可。
 
+### 自定义 OpenAI-compatible 接口（源码运行）
+
+如果模型服务或中转站兼容 OpenAI API，可在项目 `.env` 中配置：
+
+```dotenv
+APP_LLM_MODEL=openai_compatible:your-model
+APP_LLM_CONTEXT_WINDOW=请填写服务商公布的数值
+APP_LLM_MAX_OUTPUT_TOKENS=请填写服务商公布的数值
+OPENAI_BASE_URL=https://your-provider.example/v1
+OPENAI_API_KEY=your-key
+```
+
+完全停止并重新启动 CareerDesk 后生效。服务地址只允许带可选路径的 `http(s)` URL，不能包含凭据、查询参数或 fragment；模型容量必须以服务商文档为准。桌面发行包的模型、凭据与联网权限可在应用设置中管理。
+
 ## 🔐 隐私与安全
 
 ### 本地日历 MCP
 
 源码安装和桌面发行包提供 `careerdesk-calendar-mcp`，可让 Codex 等本地 MCP 客户端通过标准输入输出管理日程与待办。它复用 CareerDesk 配置的本地用户和数据目录，**仅允许本机 stdio 使用，禁止改成 SSE/HTTP 或暴露到网络**。写入操作使用 revision 防并发覆盖，失败或超时后必须先重新读取再重试。
+
+源码环境可将下面的命令配置为 MCP Server：
+
+```text
+<仓库路径>/backend/.venv/bin/python -m careerdesk.mcp.calendar_server
+```
+
+可用工具覆盖日程/待办的查询、新建、修改、完成和删除，以及岗位关联与时间冲突查询。删除操作还要求显式传入 `confirm="DELETE"`。桌面发行包中请使用随包附带的 `careerdesk-calendar-mcp` 可执行文件。
 
 ### 隐私
 
