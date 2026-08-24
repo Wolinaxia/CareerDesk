@@ -60,6 +60,21 @@ def test_upload_chat_attachment_kinds(client, tmp_path):
 
     bad = test_client.post("/api/uploads", files={"file": ("x.exe", b"MZ", "application/x-msdownload")}).json()
     assert bad["status"] == "error"
+    assert bad["code"] == "unsupported_attachment_format"
+    # Successful bodies must not grow a code key: clients discriminate on status.
+    assert "code" not in document and "code" not in image
+
+    empty_workbook = test_client.post(
+        "/api/uploads", files={"file": ("roles.csv", b"", "text/csv")},
+    ).json()
+    assert empty_workbook["status"] == "error"
+    assert empty_workbook["code"] == "workbook_empty"
+
+    scanned = test_client.post(
+        "/api/uploads", files={"file": ("blank.txt", b"   ", "text/plain")},
+    ).json()
+    assert scanned["status"] == "error"
+    assert scanned["code"] == "document_text_empty"
 
 
 def test_chat_document_attachment_injected_into_message(db_path):

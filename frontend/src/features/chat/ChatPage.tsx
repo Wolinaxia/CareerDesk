@@ -216,6 +216,16 @@ const CHAT_SERVER_ERROR_COPY: Readonly<Record<string, readonly [string, string]>
   model_capabilities_missing: ["模型能力信息不完整，请前往设置补齐。", "Model capability information is incomplete. Complete it in Settings."],
   image_unsupported: ["当前模型不支持图片输入，请移除图片或更换模型。", "The current model does not support image input. Remove the image or change models."],
   assistant_setup_failed: ["助手暂时无法启动，请检查模型配置后重试。", "The assistant could not start. Check model settings and retry."],
+  unsupported_attachment_format: ["这种文件格式不支持，请上传 pdf/docx/md/txt/xlsx/xls/csv/tsv 或图片。", "This file format is not supported. Upload a pdf/docx/md/txt/xlsx/xls/csv/tsv file or an image."],
+  docx_encrypted: ["这个 DOCX 是加密的，请先另存为未加密文档再上传。", "This DOCX is encrypted. Save it without encryption and upload again."],
+  document_too_large: ["文档内容超出解析上限，请压缩或拆分后再上传。", "The document content exceeds the parsing limit. Compress or split it, then upload again."],
+  document_corrupt: ["文件结构异常或已损坏，请重新另存后再上传。", "The file structure is invalid or damaged. Save a fresh copy and upload again."],
+  pdf_too_many_pages: ["PDF 页数超出上限，请拆分后再上传。", "This PDF has too many pages. Split it and upload again."],
+  document_text_empty: ["没读到文字。若是扫描版 PDF，请先 OCR 后重试。", "No text was found. If this is a scanned PDF, run OCR and try again."],
+  workbook_encoding_unreadable: ["表格编码无法识别，请另存为 UTF-8 CSV 后重试。", "The spreadsheet encoding could not be read. Save it as UTF-8 CSV and try again."],
+  workbook_empty: ["表格里没有可读取的数据。", "This spreadsheet has no readable data."],
+  extraction_dependency_missing: ["解析这种格式需要完整安装 CareerDesk 后端依赖。", "Parsing this format requires a complete CareerDesk backend installation."],
+  extraction_failed: ["解析失败，请确认文件未损坏、未加密后重试。", "Parsing failed. Confirm the file is neither damaged nor encrypted, then retry."],
 };
 
 function localizedChatServerMessage(code: string): string {
@@ -931,7 +941,10 @@ export function ChatPage({ active = true }: { active?: boolean }) {
           { signal: ctrl.signal },
         );
         if (r.status === "error") {
-          setError({ message: l("附件上传失败", "Attachment upload failed") });
+          // Localize from the code; the backend message stays diagnostic-only.
+          setError({ message: r.code
+            ? localizedChatServerMessage(r.code)
+            : l("附件上传失败", "Attachment upload failed") });
           continue;
         }
         // Invalidate the old turn only when draft attachments actually change.

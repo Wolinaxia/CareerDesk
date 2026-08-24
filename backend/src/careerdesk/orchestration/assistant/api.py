@@ -216,6 +216,7 @@ async def upload_chat_attachment(file: UploadFile = File(...),
         suffix = Path(file.filename or "").suffix.lower()
         return {
             "status": "error",
+            "code": "unsupported_attachment_format",
             "message": (
                 f"不支持的附件格式 {suffix or '（无后缀）'}"
                 "（支持 pdf/docx/md/txt/xlsx/xls/csv/tsv 与常见图片）"
@@ -232,7 +233,13 @@ async def upload_chat_attachment(file: UploadFile = File(...),
             service.extract_chat_document, destination, file.filename,
         )
     except ValueError as error:
-        return {"status": "error", "message": str(error)}
+        # Extraction failures may carry a code. The guard below preserves the legacy
+        # untyped body shape byte for byte by not assigning code for untyped failures.
+        payload = {"status": "error", "message": str(error)}
+        code = getattr(error, "code", None)
+        if isinstance(code, str):
+            payload["code"] = code
+        return payload
 
 
 @router.delete("/uploads/{stored}", response_model=ChatUploadDeleteResponse)

@@ -2,6 +2,7 @@
 import asyncio
 import io
 import os
+import re
 import stat
 import uuid
 from pathlib import Path
@@ -14,6 +15,7 @@ from careerdesk.core.config import get_settings
 from careerdesk.features.resumes.policy import MAX_RESUME_TEXT_CHARS
 from careerdesk.features.resumes.repository import get_resume, upsert_resume
 from careerdesk.orchestration.assistant.contracts import CHAT_ATTACHMENTS_TOTAL_CHAR_LIMIT
+from careerdesk.orchestration.assistant.service import extract_chat_document
 from careerdesk.platform.database import init_db
 from careerdesk.platform.storage.documents import extract_document_text
 from careerdesk.platform.http.request_limits import (DEFAULT_JSON_BODY_BYTES, MIB, RequestBodyLimitMiddleware,
@@ -21,6 +23,20 @@ from careerdesk.platform.http.request_limits import (DEFAULT_JSON_BODY_BYTES, MI
 from careerdesk.platform.storage.private import UnsafeManagedPath
 from careerdesk.platform.storage.uploads import (UploadTooLarge, cleanup_stale_files, copy_limited,
                                                 save_upload, user_upload_root)
+
+
+UPLOAD_ERROR_CODES = {
+    "docx_encrypted",
+    "document_corrupt",
+    "document_text_empty",
+    "document_too_large",
+    "extraction_dependency_missing",
+    "extraction_failed",
+    "pdf_too_many_pages",
+    "unsupported_attachment_format",
+    "workbook_empty",
+    "workbook_encoding_unreadable",
+}
 
 
 def test_copy_limited_removes_partial_file(tmp_path):
@@ -132,6 +148,33 @@ def test_chat_upload_limit_and_attachment_shape(tmp_path, monkeypatch):
         assert too_much_text.status_code == 422
 
     assert not list((tmp_path / "data" / "uploads").rglob("*.png"))
+    get_settings.cache_clear()
+
+
+def test_chat_upload_ignores_non_string_error_code(tmp_path, monkeypatch):
+    monkeypatch.setenv("APP_DATA_DIR", str(tmp_path / "data"))
+    monkeypatch.setenv("APP_LLM_MODEL", "")
+    get_settings.cache_clear()
+
+    class WeirdParserError(ValueError):
+        code = {"not": "a string"}
+
+    def fail_with_bad_code(_destination, _filename):
+        raise WeirdParserError("typed shape is invalid")
+
+    monkeypatch.setattr(
+        "careerdesk.orchestration.assistant.service.extract_chat_document",
+        fail_with_bad_code,
+    )
+    from careerdesk.bootstrap.app import create_app
+
+    with TestClient(create_app()) as client:
+        response = client.post(
+            "/api/uploads", files={"file": ("note.md", b"content", "text/markdown")},
+        )
+
+    assert response.status_code == 200
+    assert response.json() == {"status": "error", "message": "typed shape is invalid"}
     get_settings.cache_clear()
 
 
@@ -390,8 +433,43 @@ def test_docx_preflight_rejects_large_uncompressed_archive(tmp_path, monkeypatch
         archive.writestr("word/document.xml", b"123456")
     monkeypatch.setattr("careerdesk.platform.storage.documents.MAX_DOCX_UNCOMPRESSED_BYTES", 5)
 
-    with pytest.raises(ValueError, match="解压后内容过大"):
+    with pytest.raises(ValueError, match="解压后内容过大") as captured:
         extract_document_text(str(path))
+
+    assert captured.value.code == "document_too_large"
+
+
+def test_docx_preflight_rejects_too_many_entries_with_size_code(tmp_path, monkeypatch):
+    path = tmp_path / "too-many.docx"
+    with ZipFile(path, "w", compression=ZIP_DEFLATED) as archive:
+        archive.writestr("word/document.xml", b"<document />")
+        archive.writestr("word/extra.xml", b"<extra />")
+    monkeypatch.setattr("careerdesk.platform.storage.documents.MAX_DOCX_ENTRIES", 1)
+
+    with pytest.raises(ValueError, match="DOCX 内部文件过多") as captured:
+        extract_document_text(str(path))
+
+    assert captured.value.code == "document_too_large"
+
+
+def test_docx_preflight_rejects_corrupt_archive_with_corrupt_code(tmp_path):
+    path = tmp_path / "corrupt.docx"
+    path.write_bytes(b"not a zip archive")
+
+    with pytest.raises(ValueError, match="DOCX 文件结构无效或已损坏") as captured:
+        extract_document_text(str(path))
+
+    assert captured.value.code == "document_corrupt"
+
+
+def test_docx_preflight_rejects_ole_encrypted_docx_with_encrypted_code(tmp_path):
+    path = tmp_path / "encrypted.docx"
+    path.write_bytes(b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1encrypted payload")
+
+    with pytest.raises(ValueError, match="不支持加密的 DOCX") as captured:
+        extract_document_text(str(path))
+
+    assert captured.value.code == "docx_encrypted"
 
 
 def test_local_docx_conversion_receives_fail_closed_network_session(tmp_path, monkeypatch):
@@ -440,6 +518,26 @@ def test_document_parser_error_does_not_expose_internal_paths(tmp_path, monkeypa
     assert "无法读取这个文件" in str(captured.value)
     assert "/Users/private" not in str(captured.value)
     assert "secret" not in str(captured.value)
+    assert captured.value.code == "extraction_failed"
+
+
+def test_workbook_parser_import_error_uses_dependency_code(tmp_path, monkeypatch):
+    path = tmp_path / "roles.xlsx"
+    path.write_bytes(b"workbook")
+
+    def missing_dependency(_path):
+        raise ImportError("openpyxl")
+
+    monkeypatch.setattr(
+        "careerdesk.orchestration.assistant.service.parse_standard_workbook",
+        missing_dependency,
+    )
+
+    with pytest.raises(ValueError, match="解析表格需要完整安装") as captured:
+        extract_chat_document(path, "roles.xlsx")
+
+    assert captured.value.code == "extraction_dependency_missing"
+    assert not path.exists()
 
 
 def test_pdf_preflight_rejects_excessive_page_count(tmp_path, monkeypatch):
@@ -451,8 +549,51 @@ def test_pdf_preflight_rejects_excessive_page_count(tmp_path, monkeypatch):
         lambda *_args, **_kwargs: iter([object(), object(), object()]),
     )
 
-    with pytest.raises(ValueError, match="PDF 页数过多"):
+    with pytest.raises(ValueError, match="PDF 页数过多") as captured:
         extract_document_text(str(path))
+
+    assert captured.value.code == "pdf_too_many_pages"
+
+
+def test_upload_error_code_vocabulary_matches_frontend_copy_map():
+    repo_root = Path(__file__).resolve().parents[2]
+    exception_sources = [
+        (
+            repo_root / "backend/src/careerdesk/platform/storage/documents.py",
+            "DocumentExtractionError",
+        ),
+        (
+            repo_root / "backend/src/careerdesk/features/applications/workbook_intake.py",
+            "WorkbookReadError",
+        ),
+        (
+            repo_root / "backend/src/careerdesk/orchestration/assistant/service.py",
+            "DocumentExtractionError",
+        ),
+    ]
+    codes = set()
+    for path, class_name in exception_sources:
+        source = path.read_text(encoding="utf-8")
+        codes.update(re.findall(rf"{class_name}\(\s*\"([a-z0-9_]+)\"", source))
+    api_source = (repo_root / "backend/src/careerdesk/orchestration/assistant/api.py").read_text(
+        encoding="utf-8",
+    )
+    upload_function = api_source[
+        api_source.index("async def upload_chat_attachment")
+        :api_source.index("@router.delete", api_source.index("async def upload_chat_attachment"))
+    ]
+    codes.update(re.findall(r'"code":\s*"([a-z0-9_]+)"', upload_function))
+
+    assert codes == UPLOAD_ERROR_CODES
+
+    chat_page = (
+        repo_root / "frontend/src/features/chat/ChatPage.tsx"
+    ).read_text(encoding="utf-8")
+    missing_copy = sorted(
+        code for code in UPLOAD_ERROR_CODES
+        if not re.search(rf"^\s*{code}:", chat_page, flags=re.MULTILINE)
+    )
+    assert missing_copy == []
 
 
 def test_user_upload_roots_do_not_reveal_or_share_identifiers(tmp_path):

@@ -31,7 +31,11 @@ from ...features.applications.public import (
 from ...platform.ai.client import MODEL_CAPABILITY_MESSAGE, close_llm_client
 from ...platform.locale import DEFAULT_OUTPUT_LOCALE, OutputLocale
 from ...platform.runtime.recovery_scope import derive_recovery_scope
-from ...platform.storage.documents import DOCUMENT_SUFFIXES, extract_document_text
+from ...platform.storage.documents import (
+    DOCUMENT_SUFFIXES,
+    DocumentExtractionError,
+    extract_document_text,
+)
 from ...platform.storage.uploads import (
     CHAT_UPLOAD_TTL_SECONDS,
     MAX_CHAT_OR_RESUME_BYTES,
@@ -1061,9 +1065,15 @@ def extract_chat_document(destination: Path, filename: str | None) -> dict:
                 text = parse_standard_workbook(destination).structured_text
             except ValueError:
                 raise
+            except ImportError as error:
+                raise DocumentExtractionError(
+                    "extraction_dependency_missing",
+                    "解析表格需要完整安装 CareerDesk 后端依赖",
+                ) from error
             except Exception as error:  # noqa: BLE001 -- vendor parsers expose varied failures
                 logger.error("spreadsheet parser failed (%s)", type(error).__name__)
-                raise ValueError(
+                raise DocumentExtractionError(
+                    "extraction_failed",
                     "表格解析失败：请确认文件未损坏、未加密，并重新保存后重试",
                 ) from error
         else:

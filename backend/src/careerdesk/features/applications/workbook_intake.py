@@ -27,6 +27,18 @@ from .intake_models import (
 )
 
 WORKBOOK_SUFFIXES = {".xlsx", ".xls", ".csv", ".tsv"}
+
+
+class WorkbookReadError(ValueError):
+    """Carry a stable machine-readable code next to the user-facing message.
+
+    Subclassing ValueError keeps every existing caller and test working while
+    letting HTTP boundaries map failures to localized copy instead of prose.
+    """
+
+    def __init__(self, code: str, message: str) -> None:
+        super().__init__(message)
+        self.code = code
 MAX_WORKBOOK_ROWS = 1_000
 MAX_WORKBOOK_COLUMNS = 64
 
@@ -139,7 +151,10 @@ def _read_delimited(path: Path) -> WorkbookData:
         except UnicodeDecodeError:
             continue
     if text is None:
-        raise ValueError("CSV 编码无法识别，请另存为 UTF-8 CSV 后重试")
+        raise WorkbookReadError(
+            "workbook_encoding_unreadable",
+            "CSV 编码无法识别，请另存为 UTF-8 CSV 后重试",
+        )
     dialect = "excel-tab" if path.suffix.lower() == ".tsv" else "excel"
     records = list(csv.reader(io.StringIO(text), dialect=dialect))
     return _rows_from_matrix(path.stem or "表格", records)
@@ -152,7 +167,7 @@ def _rows_from_matrix(sheet: str, matrix: list[list[Any]]) -> WorkbookData:
         if any(_display(value) for value in row)
     ]
     if not nonempty:
-        raise ValueError("表格中没有可读取的数据")
+        raise WorkbookReadError("workbook_empty", "表格中没有可读取的数据")
     _, header_row = nonempty[0]
     headers = tuple(_display(value) for value in header_row)
     rows = tuple(
@@ -196,7 +211,7 @@ def _read_xls(path: Path) -> WorkbookData:
 
 def _combine(datasets: list[WorkbookData]) -> WorkbookData:
     if not datasets:
-        raise ValueError("工作簿中没有可读取的数据")
+        raise WorkbookReadError("workbook_empty", "工作簿中没有可读取的数据")
     # Preserve per-sheet headers so nonstandard sheets reach the agent while standard sheets
     # remain independently parseable even when a workbook contains instructions.
     return WorkbookData(
@@ -209,7 +224,9 @@ def read_workbook(path: str | Path) -> WorkbookData:
     target = Path(path)
     suffix = target.suffix.lower()
     if suffix not in WORKBOOK_SUFFIXES:
-        raise ValueError("只支持 xlsx、xls、csv、tsv 表格")
+        raise WorkbookReadError(
+            "unsupported_attachment_format", "只支持 xlsx、xls、csv、tsv 表格",
+        )
     if suffix in {".csv", ".tsv"}:
         return _read_delimited(target)
     return _read_xlsx(target) if suffix == ".xlsx" else _read_xls(target)

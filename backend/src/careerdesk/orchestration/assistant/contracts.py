@@ -218,6 +218,9 @@ class ChatUploadErrorResponse(BaseModel):
 
     status: Literal["error"]
     message: str
+    # Optional so response_model_exclude_unset omits it entirely for untyped
+    # failures: clients localize from the code, never from the message.
+    code: str | None = None
 
 
 ChatUploadResponse = (

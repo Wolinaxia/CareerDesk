@@ -43,7 +43,7 @@ const ERROR_COPY: Readonly<Record<string, readonly [string, string]>> = {
   http_403: ["当前账户无权执行此操作。", "Your account is not allowed to perform this action."],
   http_404: ["请求的内容已不存在或无法找到。", "The requested item no longer exists or could not be found."],
   http_409: ["内容已在其他位置发生变化，请刷新后重试。", "This item changed elsewhere. Refresh and try again."],
-  http_413: ["提交的内容过大，请缩小文件或内容后重试。", "The submitted content is too large. Reduce its size and try again."],
+  http_413: ["提交的内容过大，或已超出存储额度。请缩小文件，或删除不用的附件与简历后重试。", "The submitted content is too large, or you have reached your storage quota. Reduce its size, or delete unused attachments and resumes, then try again."],
   http_415: ["不支持这种文件或内容格式。", "This file or content format is not supported."],
   http_422: ["请求内容不完整或格式不正确，请检查后重试。", "Some fields are missing or invalid. Check the form and try again."],
   http_429: ["请求过于频繁，请稍后再试。", "Too many requests. Try again shortly."],
