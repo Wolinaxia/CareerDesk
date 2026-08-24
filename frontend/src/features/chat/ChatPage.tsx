@@ -61,6 +61,7 @@ import {
   type PromptIcon,
 } from "./chatQuickPrompts";
 import { ChatAssistantProgress } from "./ChatAssistantProgress";
+import { clipboardImages } from "./chatClipboard";
 import { useChatTurnViewport } from "./useChatTurnViewport";
 
 // It reads SSE through fetch because native EventSource cannot send the required POST body.
@@ -906,9 +907,14 @@ export function ChatPage({ active = true }: { active?: boolean }) {
     }
   }
 
-  async function pickFile(file: File | null) {
-    if (!file || busyRef.current || uploadAbortRef.current) return;
-    if (attachmentsRef.current.length >= 8) {
+  async function uploadFiles(files: File[]) {
+    if (files.length === 0 || busyRef.current) return;
+    if (uploadAbortRef.current) {
+      setError({ message: l("上一批附件仍在上传，请稍后再试。", "The previous attachments are still uploading. Try again in a moment.") });
+      return;
+    }
+    const availableSlots = 8 - attachmentsRef.current.length;
+    if (availableSlots <= 0 || files.length > availableSlots) {
       setError({ message: l("每轮最多添加 8 个附件，请先移除一个再上传。", "You can attach up to eight files per message. Remove one before uploading another.") });
       return;
     }
@@ -917,15 +923,17 @@ export function ChatPage({ active = true }: { active?: boolean }) {
     setUploading(true);
     setError(null);
     try {
-      const form = new FormData();
-      form.append("file", file);
-      const r: AttachmentUploadResponse = await uploadChatAttachment(
-        form,
-        { signal: ctrl.signal },
-      );
-      if (r.status === "error") {
-        setError({ message: l("附件上传失败", "Attachment upload failed") });
-      } else {
+      for (const file of files) {
+        const form = new FormData();
+        form.append("file", file);
+        const r: AttachmentUploadResponse = await uploadChatAttachment(
+          form,
+          { signal: ctrl.signal },
+        );
+        if (r.status === "error") {
+          setError({ message: l("附件上传失败", "Attachment upload failed") });
+          continue;
+        }
         // Invalidate the old turn only when draft attachments actually change.
         draftTurnIdRef.current = null;
         updateAttachments((current) => [...current, r]);
@@ -933,9 +941,9 @@ export function ChatPage({ active = true }: { active?: boolean }) {
           setInput((current) => current.trim()
             ? current
             : l("请帮我批量导入这份表格中的岗位，并生成可核对的导入预览。", "Import the roles in this workbook and prepare a preview for me to review."));
-          queueMicrotask(() => inputRef.current?.focus());
         }
       }
+      queueMicrotask(() => inputRef.current?.focus());
     } catch (e) {
       if (!(e instanceof DOMException && e.name === "AbortError")) {
         setError({ message: e instanceof Error ? e.message : l("附件上传失败", "Attachment upload failed") });
@@ -1454,7 +1462,7 @@ export function ChatPage({ active = true }: { active?: boolean }) {
         ref={fileRef}
         type="file"
         accept=".pdf,.docx,.md,.txt,.xlsx,.xls,.csv,.tsv,.png,.jpg,.jpeg,.gif,.webp"
-        onChange={(e) => void pickFile(e.target.files?.[0] ?? null)}
+        onChange={(e) => void uploadFiles(Array.from(e.target.files ?? []))}
         disabled={busy || uploading}
         className="hidden"
       />
@@ -1465,6 +1473,12 @@ export function ChatPage({ active = true }: { active?: boolean }) {
           onChange={(e) => {
             draftTurnIdRef.current = null;
             setInput(e.target.value);
+          }}
+          onPaste={(e) => {
+            const images = clipboardImages(Array.from(e.clipboardData.items));
+            if (images.length === 0) return;
+            e.preventDefault();
+            void uploadFiles(images);
           }}
           onKeyDown={(e) => {
             if (e.nativeEvent.isComposing) return; // Do not submit while an input method is composing text.

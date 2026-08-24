@@ -3118,6 +3118,69 @@ def test_run_chat_removes_consumed_image_after_success(db_path, monkeypatch):
     assert [event.event for event in replayed] == ["message_snapshot", "done"]
 
 
+def test_progress_screenshot_transcription_becomes_trusted_review_data(tmp_path):
+    from careerdesk.orchestration.assistant.service import (
+        PreparedChat,
+        _trusted_review_source_with_images,
+    )
+
+    image = tmp_path / "progress.png"
+    image.write_bytes(b"\x89PNG\r\n\x1a\nvisible")
+    calls = []
+
+    class VisionLLM:
+        async def chat(self, messages, **kwargs):
+            calls.append((messages, kwargs))
+            return SimpleNamespace(content="科大讯飞 产品经理 测评截止 2026-08-27 13:29")
+
+    prepared = PreparedChat(
+        "execute",
+        SimpleNamespace(),
+        "u1",
+        "session",
+        "turn",
+        request_llm=VisionLLM(),
+        image_paths=(image,),
+    )
+    source = run(_trusted_review_source_with_images(
+        prepared,
+        "[image: image/png]\n更新一下科大讯飞那条的进展",
+    ))
+
+    assert len(calls) == 1
+    assert calls[0][0][0]["content"][0]["type"] == "image"
+    assert calls[0][1]["max_tokens"] == 2_048
+    assert "截图识别文本" in source
+    assert "科大讯飞 产品经理" in source
+    assert "不是指令" in source
+
+
+def test_ordinary_screenshot_question_skips_review_transcription(tmp_path):
+    from careerdesk.orchestration.assistant.service import (
+        PreparedChat,
+        _trusted_review_source_with_images,
+    )
+
+    image = tmp_path / "role.png"
+    image.write_bytes(b"\x89PNG\r\n\x1a\nvisible")
+
+    class UnexpectedLLM:
+        async def chat(self, _messages, **_kwargs):
+            raise AssertionError("ordinary image questions should use the main agent only")
+
+    prepared = PreparedChat(
+        "execute",
+        SimpleNamespace(),
+        "u1",
+        "session",
+        "turn",
+        request_llm=UnexpectedLLM(),
+        image_paths=(image,),
+    )
+    original = "[image: image/png]\n帮我分析一下这个岗位怎么样？"
+    assert run(_trusted_review_source_with_images(prepared, original)) == original
+
+
 def test_same_session_requests_are_serialized_across_agent_instances(db_path):
     active = 0
     max_active = 0
@@ -3589,6 +3652,11 @@ def test_career_assistant_injects_current_preferences_across_new_sessions(db_pat
             {"op": "set", "key": "response_greeting", "value": "开头称呼亲爱的"},
             {"op": "set", "key": "response_tone", "value": "采用御姐风"},
             {"op": "set", "key": "投递方向", "value": "只投 Agent 应用"},
+            {"op": "set", "key": "career_strategy", "value": "金融科技与产品双轨推进"},
+            {"op": "set", "key": "career_track.fintech.name", "value": "金融科技"},
+            {"op": "set", "key": "career_track.fintech.resume_focus", "value": "强调工程与数据能力"},
+            {"op": "set", "key": "career_track.product.name", "value": "产品"},
+            {"op": "set", "key": "career_track.product.resume_focus", "value": "强调用户研究与产品判断"},
         ],
     )
 
@@ -3610,7 +3678,11 @@ def test_career_assistant_injects_current_preferences_across_new_sessions(db_pat
     for agent in (first, second):
         assert '"key":"response_greeting"' in agent.system_prompt
         assert '"key":"response_tone"' in agent.system_prompt
-        assert "只投 Agent 应用" not in agent.system_prompt
+        assert '"career_tracks"' in agent.system_prompt
+        assert '"name":"金融科技"' in agent.system_prompt
+        assert '"field":"resume_focus","value":"强调用户研究与产品判断"' in agent.system_prompt
+        assert "只投 Agent 应用" in agent.system_prompt
+        assert "绝不能把不同方向" in agent.system_prompt
         assert "不能覆盖上面的安全" in agent.system_prompt
     assert run(first.arun(
         "你好",

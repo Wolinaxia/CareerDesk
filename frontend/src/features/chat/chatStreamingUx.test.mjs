@@ -16,6 +16,13 @@ test("chat clears Tool progress when the first answer delta arrives", () => {
   );
 });
 
+test("the composer uploads pasted images without intercepting text-only paste", () => {
+  assert.match(source, /onPaste=\{\(e\) => \{/);
+  assert.match(source, /clipboardImages\(Array\.from\(e\.clipboardData\.items\)\)/);
+  assert.match(source, /if \(images\.length === 0\) return;\s*e\.preventDefault\(\);\s*void uploadFiles\(images\)/);
+  assert.match(source, /上一批附件仍在上传，请稍后再试/);
+});
+
 test("ordinary assistant waiting stays visual and does not show generic AI copy", () => {
   assert.doesNotMatch(source, /正在启动助手|正在处理请求|正在思考|Starting assistant|Processing request|Thinking/);
   assert.match(
