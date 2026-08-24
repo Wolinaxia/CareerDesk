@@ -118,9 +118,14 @@ def test_resumes_service_delegates_structured_provider_calls_to_ai_tasks():
 def test_resumes_public_surface_is_intentionally_narrow():
     from careerdesk.features.resumes import public
 
+    # The three resume-text names below are exposed for careerdesk/mcp/resume_server.py.
+    # The local resume MCP is a cross-domain consumer, and
+    # test_resumes_private_modules_do_not_leak_outside_feature forbids it from
+    # importing features.resumes.repository directly, so it must go through public.
     assert set(public.__all__) == {
         "ResumeService",
         "STEADY_BOX",
+        "get_active_resume_text",
         "get_resume",
         "list_resumes",
         "list_resume_summaries",
@@ -129,6 +134,8 @@ def test_resumes_public_surface_is_intentionally_narrow():
         "resume_adaptation_candidates_in_transaction",
         "resume_analysis_lines",
         "resume_generation_snapshot_in_transaction",
+        "update_active_resume_text",
+        "upsert_resume",
     }
 
 

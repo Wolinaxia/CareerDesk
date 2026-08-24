@@ -660,6 +660,7 @@ def test_source_wrapper_is_thin_and_console_entry_owns_the_launcher():
         "careerdesk": "careerdesk.bootstrap.desktop:main",
         "careerdesk-data": "careerdesk.bootstrap.cli:main",
         "careerdesk-calendar-mcp": "careerdesk.mcp.calendar_server:main",
+        "careerdesk-resume-mcp": "careerdesk.mcp.resume_server:main",
     }
 
 

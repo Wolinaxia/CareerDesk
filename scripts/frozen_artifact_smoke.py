@@ -1,4 +1,4 @@
-"""Exercise both executables from a frozen desktop artifact on its native OS."""
+"""Exercise every executable from a frozen desktop artifact on its native OS."""
 
 from __future__ import annotations
 
@@ -174,34 +174,64 @@ def _run_data_round_trip(executable: Path, root: Path) -> None:
         raise RuntimeError("frozen data command lost an uploaded file")
 
 
-async def _exercise_mcp(executable: Path, environment: dict[str, str]) -> None:
+async def _exercise_mcp(
+    executable: Path,
+    environment: dict[str, str],
+    *,
+    server_name: str,
+    tool_name: str,
+    arguments: dict,
+    expected: dict,
+) -> None:
     parameters = StdioServerParameters(command=str(executable), env=environment)
     with open(os.devnull, "w", encoding="utf-8") as errlog:
         async with stdio_client(parameters, errlog=errlog) as (read_stream, write_stream):
             async with ClientSession(read_stream, write_stream) as session:
                 initialized = await session.initialize()
                 tools = await session.list_tools()
-                result = await session.call_tool("list_calendar_items", {
-                    "start": "2026-09-01",
-                    "end": "2026-09-30",
-                })
-    if initialized.serverInfo.name != "CareerDesk Calendar":
-        raise RuntimeError("frozen MCP returned an unexpected server identity")
-    if "list_calendar_items" not in {tool.name for tool in tools.tools}:
-        raise RuntimeError("frozen MCP did not expose list_calendar_items")
-    if result.isError or result.structuredContent != {
-        "start": "2026-09-01", "end": "2026-09-30", "items": [],
-    }:
-        raise RuntimeError(f"frozen MCP list_calendar_items failed: {result}")
+                result = await session.call_tool(tool_name, arguments)
+    if initialized.serverInfo.name != server_name:
+        raise RuntimeError(
+            "frozen MCP returned an unexpected server identity: "
+            f"{initialized.serverInfo.name}"
+        )
+    if tool_name not in {tool.name for tool in tools.tools}:
+        raise RuntimeError(f"frozen MCP did not expose {tool_name}")
+    if result.isError or result.structuredContent != expected:
+        raise RuntimeError(f"frozen MCP {tool_name} failed: {result}")
 
 
-def _run_mcp_smoke(executable: Path, root: Path) -> None:
-    asyncio.run(_exercise_mcp(executable, _isolated_environment(root / "mcp")))
+def _run_mcp_smoke(
+    calendar_executable: Path, resume_executable: Path, root: Path,
+) -> None:
+    # Separate isolation roots: neither server's database may mask the other's.
+    asyncio.run(_exercise_mcp(
+        calendar_executable,
+        _isolated_environment(root / "calendar-mcp"),
+        server_name="CareerDesk Calendar",
+        tool_name="list_calendar_items",
+        arguments={"start": "2026-09-01", "end": "2026-09-30"},
+        expected={"start": "2026-09-01", "end": "2026-09-30", "items": []},
+    ))
+    asyncio.run(_exercise_mcp(
+        resume_executable,
+        _isolated_environment(root / "resume-mcp"),
+        server_name="CareerDesk Resumes",
+        tool_name="list_resumes",
+        arguments={},
+        expected={"items": []},
+    ))
 
 
-def smoke(desktop_executable: Path, data_executable: Path, mcp_executable: Path) -> None:
+def smoke(
+    desktop_executable: Path,
+    data_executable: Path,
+    calendar_mcp_executable: Path,
+    resume_mcp_executable: Path,
+) -> None:
     if not all(path.is_file() for path in (
-        desktop_executable, data_executable, mcp_executable,
+        desktop_executable, data_executable,
+        calendar_mcp_executable, resume_mcp_executable,
     )):
         raise FileNotFoundError("frozen desktop artifact is missing an executable")
     # WebView2 leaves Crashpad files behind briefly; leftover temp data on an
@@ -211,7 +241,7 @@ def smoke(desktop_executable: Path, data_executable: Path, mcp_executable: Path)
     ) as temporary:
         root = Path(temporary)
         _run_data_round_trip(data_executable, root)
-        _run_mcp_smoke(mcp_executable, root)
+        _run_mcp_smoke(calendar_mcp_executable, resume_mcp_executable, root)
         port = _free_port()
         environment = _isolated_environment(root / "desktop", port=port)
         log_path = root / "desktop.log"
@@ -394,9 +424,15 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="原生运行冻结桌面与数据维护可执行文件")
     parser.add_argument("--desktop-executable", type=Path, required=True)
     parser.add_argument("--data-executable", type=Path, required=True)
-    parser.add_argument("--mcp-executable", type=Path, required=True)
+    parser.add_argument("--calendar-mcp-executable", type=Path, required=True)
+    parser.add_argument("--resume-mcp-executable", type=Path, required=True)
     arguments = parser.parse_args()
-    smoke(arguments.desktop_executable, arguments.data_executable, arguments.mcp_executable)
+    smoke(
+        arguments.desktop_executable,
+        arguments.data_executable,
+        arguments.calendar_mcp_executable,
+        arguments.resume_mcp_executable,
+    )
     print("frozen desktop/data/MCP smoke passed")
     return 0
 

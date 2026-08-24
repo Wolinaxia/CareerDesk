@@ -155,6 +155,20 @@ For a source checkout, configure the following command as an MCP server:
 
 The tools cover listing, creating, updating, completing, and deleting events and to-dos, plus linked-role and conflict queries. Deletion additionally requires an explicit `confirm="DELETE"`. For desktop distributions, use the bundled `careerdesk-calendar-mcp` executable.
 
+### Local resume MCP
+
+Source installations and desktop builds include `careerdesk-resume-mcp`, which lets local MCP clients such as Codex read job descriptions and read or write résumé text over standard input/output. It reuses CareerDesk's configured local user and data directory. **It is restricted to local stdio and must never be changed to SSE/HTTP or exposed on a network.** Résumé names are unique and creating one never overwrites an existing name; replacing résumé text requires the `expected_content_hash` returned by the matching read and fails outright once the content has changed. Writes are not safely retryable: after an error or timeout, read the résumé list and the application binding again before retrying.
+
+For a source checkout, configure the following command as an MCP server:
+
+```text
+<repository>/backend/.venv/bin/python -m careerdesk.mcp.resume_server
+```
+
+When `save_resume` archives a local source file, it can read only directories allowed by `APP_RESUME_MCP_ARCHIVE_SOURCE_ROOTS`, which defaults to `~/Desktop`, `~/Documents`, and `~/Downloads`.
+
+Seven tools are available: `list_applications`, `get_application_jd`, `list_resumes`, `get_resume_text`, and `get_application_resume` read applications and résumés, and the JD is never truncated; `save_resume` creates a new résumé and can archive its source file; `update_resume_text` replaces the text against its content hash. A newly created résumé is left with a pending annotation status, so run résumé annotation from the CareerDesk UI. For desktop distributions, use the bundled `careerdesk-resume-mcp` executable.
+
 ### Privacy
 
 Your applications, résumés, interview notes, conversations, and generated artifacts stay on your computer. Only when you explicitly use an authorized external service is the material required for that operation sent to the LLM or other provider you configured. Strict offline mode can pause all in-app network capabilities.

@@ -158,6 +158,21 @@ def test_blank_data_dir_is_rejected_instead_of_becoming_repository_root():
         Settings(_env_file=None, data_dir="")
 
 
+@pytest.mark.parametrize(
+    ("value", "message"),
+    [
+        ("/", "不能包含文件系统根或 HOME"),
+        ("~", "不能包含文件系统根或 HOME"),
+        (".", "只能包含绝对路径"),
+        ("", "不能为空"),
+        ("   ", "不能为空"),
+    ],
+)
+def test_resume_mcp_archive_source_roots_reject_unsafe_values(value, message):
+    with pytest.raises(ValidationError, match=message):
+        Settings(_env_file=None, resume_mcp_archive_source_roots=value)
+
+
 def test_openai_compatible_endpoint_matches_agentmaker_priority_and_keeps_path(monkeypatch):
     monkeypatch.setenv("OPENAI_BASE_URL", "HTTPS://Gateway.Example/v1/team")
     monkeypatch.setenv("LLM_BASE_URL", "https://ignored.example/v1")

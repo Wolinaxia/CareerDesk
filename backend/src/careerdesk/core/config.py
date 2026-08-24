@@ -181,6 +181,7 @@ class Settings(BaseSettings):
     # Single local-data root for the business database and uploads. Never put an active SQLite
     # directory on a sync drive; sync only complete Online Backup packages.
     data_dir: str = str(DEFAULT_DATA_DIR)
+    resume_mcp_archive_source_roots: str = "~/Desktop,~/Documents,~/Downloads"
 
     @field_validator("data_dir")
     @classmethod
@@ -191,6 +192,25 @@ class Settings(BaseSettings):
         bypass single-instance enforcement.
         """
         return str(canonical_data_dir(value))
+
+    @field_validator("resume_mcp_archive_source_roots")
+    @classmethod
+    def _safe_resume_mcp_archive_source_roots(cls, value: str) -> str:
+        """Reject broad archive-source roots so the local MCP read boundary stays narrow."""
+        roots = [item.strip() for item in str(value).split(",") if item.strip()]
+        if not roots:
+            raise ValueError("APP_RESUME_MCP_ARCHIVE_SOURCE_ROOTS 不能为空")
+        home = Path.home().resolve()
+        for item in roots:
+            candidate = Path(item).expanduser()
+            if not candidate.is_absolute():
+                raise ValueError("APP_RESUME_MCP_ARCHIVE_SOURCE_ROOTS 只能包含绝对路径")
+            resolved = candidate.resolve(strict=False)
+            if resolved.parent == resolved or resolved == home:
+                raise ValueError(
+                    "APP_RESUME_MCP_ARCHIVE_SOURCE_ROOTS 不能包含文件系统根或 HOME"
+                )
+        return value
     # Agent traces are bounded metadata-only logs excluded from business backups. A custom data
     # root without a log root uses a sibling logs directory, keeping portable/test instances out
     # of global paths while maintaining physical separation.
@@ -327,6 +347,15 @@ class Settings(BaseSettings):
     def allowed_origin_list(self) -> list[str]:
         """Return the exact server-mode Origin allowlist; middleware validates local loopback."""
         return [item.strip() for item in self.allowed_origins.split(",") if item.strip()]
+
+    @property
+    def resume_mcp_archive_source_root_list(self) -> list[Path]:
+        """Return local directories the resume MCP may read source archives from."""
+        return [
+            Path(item.strip()).expanduser()
+            for item in self.resume_mcp_archive_source_roots.split(",")
+            if item.strip()
+        ]
 
 
 @lru_cache

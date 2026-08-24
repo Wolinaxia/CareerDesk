@@ -256,6 +256,18 @@ def test_public_documentation_matches_the_current_distribution_and_contribution_
     assert "上线时配 CD" not in readmes
     assert "hosted web service" in readme
     assert "托管式网站服务" in readme_zh
+    assert "careerdesk-calendar-mcp" in readme
+    assert "careerdesk-calendar-mcp" in readme_zh
+    assert "manage calendar events and to-dos" in readme
+    assert "管理日程与待办" in readme_zh
+    assert "careerdesk-resume-mcp" in readme
+    assert "careerdesk-resume-mcp" in readme_zh
+    assert "read job descriptions and read or write résumé text" in readme
+    assert "读取岗位 JD、读写简历正文" in readme_zh
+    assert "APP_RESUME_MCP_ARCHIVE_SOURCE_ROOTS" in readme
+    assert "APP_RESUME_MCP_ARCHIVE_SOURCE_ROOTS" in readme_zh
+    assert "`~/Desktop`, `~/Documents`, and `~/Downloads`" in readme
+    assert "`~/Desktop`、`~/Documents`、`~/Downloads`" in readme_zh
     assert "Every Issue and PR is welcome" in readme
     assert "所有 Issue 和 PR 都非常欢迎" in readme_zh
     assert "customer-support channel" in disclaimer

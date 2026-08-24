@@ -1,4 +1,4 @@
-"""Dispatch the two executables embedded in the self-contained bundle."""
+"""Dispatch the executables embedded in the self-contained bundle."""
 
 import os
 from pathlib import Path
@@ -16,9 +16,14 @@ def main() -> int:
 
         return cli_main()
     if Path(sys.executable).stem.casefold() == "careerdesk-calendar-mcp":
-        from careerdesk.mcp.calendar_server import main as mcp_main
+        from careerdesk.mcp.calendar_server import main as calendar_mcp_main
 
-        mcp_main()
+        calendar_mcp_main()
+        return 0
+    if Path(sys.executable).stem.casefold() == "careerdesk-resume-mcp":
+        from careerdesk.mcp.resume_server import main as resume_mcp_main
+
+        resume_mcp_main()
         return 0
     from careerdesk.bootstrap.desktop import main as desktop_main
 

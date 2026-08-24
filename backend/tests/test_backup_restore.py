@@ -331,3 +331,6 @@ def test_distribution_and_frozen_bundle_expose_data_maintenance_cli():
     assert 'stem.casefold() == "careerdesk-calendar-mcp"' in frozen_entry
     assert "careerdesk.bootstrap.cli" in frozen_entry
     assert "careerdesk.mcp.calendar_server" in frozen_entry
+    assert 'careerdesk-resume-mcp = "careerdesk.mcp.resume_server:main"' in pyproject
+    assert 'stem.casefold() == "careerdesk-resume-mcp"' in frozen_entry
+    assert "careerdesk.mcp.resume_server" in frozen_entry

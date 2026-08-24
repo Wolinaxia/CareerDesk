@@ -185,7 +185,8 @@ def test_tag_release_runs_real_frozen_artifacts_on_both_native_oses():
     assert native_jobs.count(release_dependencies) == 2
     assert native_jobs.count("desktop/package_desktop.py") == 2
     assert native_jobs.count("scripts/frozen_artifact_smoke.py") == 2
-    assert native_jobs.count("--mcp-executable") == 2
+    assert native_jobs.count("--calendar-mcp-executable") == 2
+    assert native_jobs.count("--resume-mcp-executable") == 2
     assert native_jobs.count("actions/upload-artifact") == 2
 
 
@@ -202,6 +203,8 @@ def test_local_macos_one_click_package_script_reuses_the_verified_pipeline():
         "uv build --project backend --wheel",
         "desktop/package_desktop.py",
         "scripts/frozen_artifact_smoke.py",
+        "--calendar-mcp-executable",
+        "--resume-mcp-executable",
         "codesign --verify --deep --strict",
         "ditto -c -k --sequesterRsrc --keepParent",
         "unzip -tq",

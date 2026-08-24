@@ -20,7 +20,12 @@ PACKAGE = SITE / "careerdesk"
 VERSION = os.environ["CAREERDESK_BUILD_VERSION"]
 WINDOWS_VERSION_FILE = os.environ.get("CAREERDESK_WINDOWS_VERSION_FILE")
 WINDOWS_DATA_VERSION_FILE = os.environ.get("CAREERDESK_WINDOWS_DATA_VERSION_FILE")
-WINDOWS_MCP_VERSION_FILE = os.environ.get("CAREERDESK_WINDOWS_MCP_VERSION_FILE")
+WINDOWS_CALENDAR_MCP_VERSION_FILE = os.environ.get(
+    "CAREERDESK_WINDOWS_CALENDAR_MCP_VERSION_FILE"
+)
+WINDOWS_RESUME_MCP_VERSION_FILE = os.environ.get(
+    "CAREERDESK_WINDOWS_RESUME_MCP_VERSION_FILE"
+)
 LEGAL = Path(os.environ["CAREERDESK_LEGAL_DIR"]).resolve()
 
 if not (PACKAGE / "default.env").is_file():
@@ -126,7 +131,7 @@ data_exe = EXE(
     icon=str(icon),
     version=WINDOWS_DATA_VERSION_FILE if sys.platform == "win32" else None,
 )
-mcp_exe = EXE(
+calendar_mcp_exe = EXE(
     pyz,
     a.scripts,
     [],
@@ -143,12 +148,32 @@ mcp_exe = EXE(
     codesign_identity=None,
     entitlements_file=None,
     icon=str(icon),
-    version=WINDOWS_MCP_VERSION_FILE if sys.platform == "win32" else None,
+    version=WINDOWS_CALENDAR_MCP_VERSION_FILE if sys.platform == "win32" else None,
+)
+resume_mcp_exe = EXE(
+    pyz,
+    a.scripts,
+    [],
+    exclude_binaries=True,
+    name="careerdesk-resume-mcp",
+    debug=False,
+    bootloader_ignore_signals=False,
+    strip=False,
+    upx=False,
+    console=True,
+    disable_windowed_traceback=False,
+    argv_emulation=False,
+    target_arch=None,
+    codesign_identity=None,
+    entitlements_file=None,
+    icon=str(icon),
+    version=WINDOWS_RESUME_MCP_VERSION_FILE if sys.platform == "win32" else None,
 )
 bundle = COLLECT(
     exe,
     data_exe,
-    mcp_exe,
+    calendar_mcp_exe,
+    resume_mcp_exe,
     a.binaries,
     a.datas,
     strip=False,

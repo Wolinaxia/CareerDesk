@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+import re
 import sys
 import zipfile
 
@@ -146,7 +147,8 @@ def test_build_environment_strips_credentials_and_points_discovery_at_wheel(tmp_
         version="0.1.0",
         windows_version_file=None,
         windows_data_version_file=None,
-        windows_mcp_version_file=None,
+        windows_calendar_mcp_version_file=None,
+        windows_resume_mcp_version_file=None,
         legal_dir=tmp_path / "legal",
     )
 
@@ -159,6 +161,8 @@ def test_build_environment_strips_credentials_and_points_discovery_at_wheel(tmp_
     assert "APP_DATA_DIR" not in environment
     assert "GOOGLE_APPLICATION_CREDENTIALS" not in environment
     assert "CAREERDESK_WINDOWS_VERSION_FILE" not in environment
+    assert "CAREERDESK_WINDOWS_CALENDAR_MCP_VERSION_FILE" not in environment
+    assert "CAREERDESK_WINDOWS_RESUME_MCP_VERSION_FILE" not in environment
 
 
 def test_packaging_cli_reconfigures_redirected_windows_output(monkeypatch):
@@ -240,6 +244,9 @@ def test_build_manifest_contract_has_no_signing_claim(
         executable.write_bytes(b"executable")
         (executable.parent / "careerdesk-data").write_bytes(b"data-executable")
         (executable.parent / "careerdesk-calendar-mcp").write_bytes(b"mcp-executable")
+        (executable.parent / "careerdesk-resume-mcp").write_bytes(
+            b"resume-mcp-executable",
+        )
         resource_root = artifact / "Contents/Resources/careerdesk"
         (resource_root / "frontend_dist").mkdir(parents=True)
         (resource_root / "default.env").write_text("", encoding="utf-8")
@@ -279,8 +286,11 @@ def test_build_manifest_contract_has_no_signing_claim(
     assert len(manifest["executable_sha256"]) == 64
     assert manifest["data_executable"].endswith("/careerdesk-data")
     assert len(manifest["data_executable_sha256"]) == 64
+    assert manifest["schema_version"] == 1
     assert manifest["mcp_executable"].endswith("/careerdesk-calendar-mcp")
     assert len(manifest["mcp_executable_sha256"]) == 64
+    assert manifest["resume_mcp_executable"].endswith("/careerdesk-resume-mcp")
+    assert len(manifest["resume_mcp_executable_sha256"]) == 64
     assert manifest["legal_notices"] is True
     assert len(manifest["python_notice_index_sha256"]) == 64
     assert len(manifest["node_notice_index_sha256"]) == 64
@@ -337,6 +347,8 @@ def test_spec_uses_installed_wheel_resources_and_platform_native_artifacts():
     assert 'name="CareerDesk"' in source
     assert 'name="careerdesk-data"' in source
     assert 'name="careerdesk-calendar-mcp"' in source
+    assert 'name="careerdesk-resume-mcp"' in source
+    assert "version=WINDOWS_RESUME_MCP_VERSION_FILE" in source
     assert 'collect_submodules("mcp", filter=lambda name: not name.startswith("mcp.cli"))' in source
     assert "console=False" in source
     assert "console=True" in source
@@ -345,9 +357,24 @@ def test_spec_uses_installed_wheel_resources_and_platform_native_artifacts():
     assert '(str(LEGAL), "Legal")' in source
     assert 'collect_data_files("magika")' in source
     assert 'collect_data_files("sqlite_vec")' in source
-    assert source.count("codesign_identity=None") == 4
+    assert source.count("codesign_identity=None") == 5
     assert "--onefile" not in source
     assert "SOURCE_LAYOUT" not in source
+
+
+def test_spec_keeps_mcp_exe_blocks_in_lockstep():
+    source = package_desktop.SPEC.read_text(encoding="utf-8")
+
+    def normalized_block(variable: str) -> list[str]:
+        match = re.search(rf"^{variable} = EXE\(\n(?P<body>.*?^\)\n)", source, flags=re.MULTILINE | re.DOTALL)
+        assert match is not None
+        return [
+            line
+            for line in match.group("body").splitlines()
+            if not line.strip().startswith(("name=", "version="))
+        ]
+
+    assert normalized_block("calendar_mcp_exe") == normalized_block("resume_mcp_exe")
 
 
 def test_windows_shortcut_helper_targets_its_own_folder():

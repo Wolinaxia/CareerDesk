@@ -206,7 +206,8 @@ def _build_environment(
     version: str,
     windows_version_file: Path | None,
     windows_data_version_file: Path | None,
-    windows_mcp_version_file: Path | None,
+    windows_calendar_mcp_version_file: Path | None,
+    windows_resume_mcp_version_file: Path | None,
     legal_dir: Path,
 ) -> dict[str, str]:
     environment = {
@@ -225,7 +226,14 @@ def _build_environment(
     for name, value in (
         ("CAREERDESK_WINDOWS_VERSION_FILE", windows_version_file),
         ("CAREERDESK_WINDOWS_DATA_VERSION_FILE", windows_data_version_file),
-        ("CAREERDESK_WINDOWS_MCP_VERSION_FILE", windows_mcp_version_file),
+        (
+            "CAREERDESK_WINDOWS_CALENDAR_MCP_VERSION_FILE",
+            windows_calendar_mcp_version_file,
+        ),
+        (
+            "CAREERDESK_WINDOWS_RESUME_MCP_VERSION_FILE",
+            windows_resume_mcp_version_file,
+        ),
     ):
         if value is not None:
             environment[name] = str(value)
@@ -252,25 +260,45 @@ def _sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
-def _artifact_paths(dist: Path, platform_name: str) -> tuple[Path, Path, Path, Path]:
+def _artifact_paths(
+    dist: Path, platform_name: str,
+) -> tuple[Path, Path, Path, Path, Path]:
     if platform_name == "darwin":
         artifact = dist / "CareerDesk.app"
         executable = artifact / "Contents" / "MacOS" / "CareerDesk"
         data_executable = artifact / "Contents" / "MacOS" / "careerdesk-data"
-        mcp_executable = artifact / "Contents" / "MacOS" / "careerdesk-calendar-mcp"
+        calendar_mcp_executable = (
+            artifact / "Contents" / "MacOS" / "careerdesk-calendar-mcp"
+        )
+        resume_mcp_executable = (
+            artifact / "Contents" / "MacOS" / "careerdesk-resume-mcp"
+        )
     else:
         artifact = dist / "CareerDesk"
         executable = artifact / "CareerDesk.exe"
         data_executable = artifact / "careerdesk-data.exe"
-        mcp_executable = artifact / "careerdesk-calendar-mcp.exe"
-    if (
-        not artifact.is_dir()
-        or not executable.is_file()
-        or not data_executable.is_file()
-        or not mcp_executable.is_file()
-    ):
-        raise RuntimeError("PyInstaller 未生成预期的桌面/数据维护/MCP 可执行文件")
-    return artifact, executable, data_executable, mcp_executable
+        calendar_mcp_executable = artifact / "careerdesk-calendar-mcp.exe"
+        resume_mcp_executable = artifact / "careerdesk-resume-mcp.exe"
+    expected = (
+        executable,
+        data_executable,
+        calendar_mcp_executable,
+        resume_mcp_executable,
+    )
+    missing = [str(path) for path in expected if not path.is_file()]
+    if not artifact.is_dir() or missing:
+        # Name the absent paths: four launchers make a bare failure unactionable.
+        raise RuntimeError(
+            "PyInstaller 未生成预期的桌面/数据维护/MCP 可执行文件："
+            + "、".join(missing or [str(artifact)])
+        )
+    return (
+        artifact,
+        executable,
+        data_executable,
+        calendar_mcp_executable,
+        resume_mcp_executable,
+    )
 
 
 def _verify_bundled_resources(artifact: Path, platform_name: str) -> None:
@@ -386,9 +414,10 @@ def build(
 
     windows_version = None
     windows_data_version = None
-    windows_mcp_version = None
+    windows_calendar_mcp_version = None
+    windows_resume_mcp_version = None
     if host == "win32":
-        # Explorer shows these strings; identical ones made the two executables
+        # Explorer shows these strings; identical ones made these executables
         # indistinguishable apart from their filename.
         windows_version = output / "windows-version.txt"
         _windows_version_file(
@@ -406,13 +435,21 @@ def build(
             internal_name="careerdesk-data",
             original_filename="careerdesk-data.exe",
         )
-        windows_mcp_version = output / "windows-mcp-version.txt"
+        windows_calendar_mcp_version = output / "windows-calendar-mcp-version.txt"
         _windows_version_file(
             identity.version,
-            windows_mcp_version,
+            windows_calendar_mcp_version,
             description="CareerDesk calendar MCP tool (local stdio only)",
             internal_name="careerdesk-calendar-mcp",
             original_filename="careerdesk-calendar-mcp.exe",
+        )
+        windows_resume_mcp_version = output / "windows-resume-mcp-version.txt"
+        _windows_version_file(
+            identity.version,
+            windows_resume_mcp_version,
+            description="CareerDesk resume MCP tool (local stdio only)",
+            internal_name="careerdesk-resume-mcp",
+            original_filename="careerdesk-resume-mcp.exe",
         )
 
     command = [
@@ -432,12 +469,19 @@ def build(
             version=identity.version,
             windows_version_file=windows_version,
             windows_data_version_file=windows_data_version,
-            windows_mcp_version_file=windows_mcp_version,
+            windows_calendar_mcp_version_file=windows_calendar_mcp_version,
+            windows_resume_mcp_version_file=windows_resume_mcp_version,
             legal_dir=legal,
         ),
         check=True,
     )
-    artifact, executable, data_executable, mcp_executable = _artifact_paths(dist, host)
+    (
+        artifact,
+        executable,
+        data_executable,
+        calendar_mcp_executable,
+        resume_mcp_executable,
+    ) = _artifact_paths(dist, host)
     if host == "win32":
         # A pre-built .lnk cannot ship in the archive: shortcuts embed absolute
         # targets unknown at build time. This helper creates one for wherever the
@@ -477,11 +521,15 @@ def build(
         "artifact": str(artifact.relative_to(output)),
         "executable": str(executable.relative_to(output)),
         "data_executable": str(data_executable.relative_to(output)),
-        "mcp_executable": str(mcp_executable.relative_to(output)),
+        # The unprefixed mcp_executable keys remain the calendar binary so that
+        # schema_version 1 build-manifest consumers keep working.
+        "mcp_executable": str(calendar_mcp_executable.relative_to(output)),
+        "resume_mcp_executable": str(resume_mcp_executable.relative_to(output)),
         "wheel_sha256": _sha256(wheel),
         "executable_sha256": _sha256(executable),
         "data_executable_sha256": _sha256(data_executable),
-        "mcp_executable_sha256": _sha256(mcp_executable),
+        "mcp_executable_sha256": _sha256(calendar_mcp_executable),
+        "resume_mcp_executable_sha256": _sha256(resume_mcp_executable),
         "legal_notices": True,
         "python_notice_index_sha256": _sha256(
             legal / "ThirdParty" / "Python" / "index.json"
