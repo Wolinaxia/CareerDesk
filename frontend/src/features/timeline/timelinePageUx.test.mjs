@@ -582,7 +582,8 @@ test("detail actions, notes, and research status use the compact requested layou
   const source = await readFile(pageUrl, "utf8");
   assert.doesNotMatch(source, /aria-label="更多操作"/);
   assert.doesNotMatch(source, /detailMenuOpen/);
-  assert.match(source, /\["adaptation", l\("简历优化", "Resume adaptation"\)\][\s\S]*?ml-auto[\s\S]*?l\("编辑申请", "Edit application"\)[\s\S]*?deletePreparing \? l\("准备中…", "Preparing…"\) : l\("删除申请", "Delete application"\)/);
+  assert.match(source, /\["adaptation", l\("简历优化", "Resume adaptation"\)\][\s\S]*?ml-auto[\s\S]*?l\("记录进展", "Record progress"\)[\s\S]*?l\("编辑岗位资料", "Edit role details"\)[\s\S]*?deletePreparing \? l\("准备中…", "Preparing…"\) : l\("删除申请", "Delete application"\)/);
+  assert.match(source, /ref=\{historySectionRef\}[\s\S]*?l\("记录新进展", "Record new progress"\)/);
   assert.match(source, /adaptationStatus === "running"[\s\S]*?"bg-info animate-pulse"[\s\S]*?adaptationStatus === "ready"[\s\S]*?"bg-ok"/);
   assert.match(source, /onStatusChange=\{setAdaptationStatus\}/);
   assert.match(source, /detailTab === "adaptation"[\s\S]*?getResumeAdaptation\(selectedId,[\s\S]*?next\.state !== "generation_running" && next\.state !== "research_running"/);
@@ -603,7 +604,7 @@ test("detail actions, notes, and research status use the compact requested layou
   assert.doesNotMatch(profileEditor, />\s*当前阶段\s*</);
   assert.doesNotMatch(profileEditor, /当前环节（可选）/);
   assert.match(source, /flex flex-wrap items-center gap-1 text-xs text-ink-3[\s\S]*?<span className="rounded-md bg-panel-2 px-2 py-1">[\s\S]*?<span aria-hidden="true">→<\/span>[\s\S]*?<span className="rounded-md bg-panel-2 px-2 py-1">/);
-  assert.match(source, /还没有备注；点击右上角“编辑”后记录/);
+  assert.match(source, /还没有备注；点击“编辑岗位资料”后记录/);
   assert.doesNotMatch(source, /调研生成中：正在联网检索并整理公司与岗位报告/);
   assert.match(source, /调研还在生成中，报告与建议答案完成后会自动补全/);
 });
@@ -660,7 +661,7 @@ test("top-right edit owns next-action and note editing while failed completion c
   assert.doesNotMatch(source, /function rebaseOpenDetailEditAfterPlanWrite/);
   assert.match(source, /detailEditing && nextActionDraft && !stageEndsApplication/);
   assert.match(source, /与其他字段一起由右上角“保存更改”统一保存/);
-  assert.match(source, /还没有下一步；点击右上角“编辑”后填写/);
+  assert.match(source, /还没有下一步；点击“编辑岗位资料”后填写/);
   assert.match(source, /结果设为“未通过”后，这个岗位会移到“已挂”，并清空后续安排/);
   assert.match(source, /completionDraft\?\.outcome === "failed"\s*\? "rejected"/);
   assert.match(source, /outcome === "failed" \? false : completionDraft\.set_next_action/);

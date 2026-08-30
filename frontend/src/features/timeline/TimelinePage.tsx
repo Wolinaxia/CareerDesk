@@ -550,6 +550,7 @@ export function TimelinePage() {
   const [priorityMenuOpen, setPriorityMenuOpen] = useState(false);
   const [jdExpanded, setJdExpanded] = useState(false);   // Collapsible job description.
   const historyDeleteCancelRef = useRef<HTMLButtonElement | null>(null);
+  const historySectionRef = useRef<HTMLDivElement | null>(null);
   const drawerRef = useRef<HTMLElement | null>(null);   // Move focus here on open and trap Tab inside.
   const drawerReturnFocusRef = useRef<HTMLElement | null>(null);   // Return focus to the originating card on close.
   const currentStepInputRef = useRef<HTMLInputElement | null>(null);
@@ -2426,6 +2427,9 @@ export function TimelinePage() {
       conflicted: false,
       entry_conflict: null,
     });
+    window.requestAnimationFrame(() => {
+      historySectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
   }
 
   async function saveHistoryEntry() {
@@ -3176,7 +3180,15 @@ export function TimelinePage() {
                     </div>
                     {!detailEditing && (
                       <div className="ml-auto flex shrink-0 gap-1.5 pb-2">
-                        <button type="button" onClick={startDetailEdit} disabled={detailRefreshBlocked} className="btn btn-sm">{l("编辑申请", "Edit application")}</button>
+                        <button
+                          type="button"
+                          onClick={startCreatingHistoryEntry}
+                          disabled={detailRefreshBlocked || historySaving || historyDraft !== null}
+                          className="btn-primary btn-sm"
+                        >
+                          {l("记录进展", "Record progress")}
+                        </button>
+                        <button type="button" onClick={startDetailEdit} disabled={detailRefreshBlocked || historyDraft !== null} className="btn btn-sm">{l("编辑岗位资料", "Edit role details")}</button>
                         <button type="button" onClick={() => void prepareDetailDelete()} disabled={deletePreparing || detailRefreshBlocked} className="btn btn-sm text-bad hover:!bg-bad-soft">
                           {deletePreparing ? l("准备中…", "Preparing…") : l("删除申请", "Delete application")}
                         </button>
@@ -3271,7 +3283,7 @@ export function TimelinePage() {
                   <span className="text-sm font-medium">{l("备注", "Notes")}</span>
                 </div>
                 <p className={`whitespace-pre-wrap break-words px-3.5 pb-3 text-sm ${detail.application_note ? "text-ink-2" : "text-ink-3"}`}>
-                  {detail.application_note || l("还没有备注；点击右上角“编辑”后记录。", "No notes yet. Choose Edit application to add them.")}
+                  {detail.application_note || l("还没有备注；点击“编辑岗位资料”后记录。", "No notes yet. Choose Edit role details to add them.")}
                 </p>
               </>
             )}
@@ -3345,7 +3357,7 @@ export function TimelinePage() {
               className="rounded-2xl border border-line bg-panel-2/55 p-4 disabled:opacity-70"
             >
               <div className="mb-3">
-                <h3 id="job-profile-editor-title" className="text-sm font-semibold">{l("岗位信息", "Role information")}</h3>
+                <h3 id="job-profile-editor-title" className="text-sm font-semibold">{l("岗位资料", "Role details")}</h3>
                 <p className="mt-0.5 text-xs text-ink-3">{l("修改名称或岗位描述后，旧的公司调研会自动失效。", "Changing the name or job description invalidates older company research.")}</p>
               </div>
               {profileConflict && (
@@ -3608,21 +3620,21 @@ export function TimelinePage() {
               <p className="mt-2 text-sm text-ink-3">
                 {detail.stage === "rejected" || detail.stage === "withdrawn"
                   ? l("流程已结束，不再保留下一步安排。", "This process has ended, so no next action is retained.")
-                  : l("还没有下一步；点击右上角“编辑”后填写，保存后会进入近期日程。", "No next action yet. Choose Edit application to add one to the upcoming agenda.")}
+                  : l("还没有下一步；点击“编辑岗位资料”后填写，保存后会进入近期日程。", "No next action yet. Choose Edit role details to add one to the upcoming agenda.")}
               </p>
             )}
           </section>
 
-          <div className="flex items-center justify-between gap-2">
+          <div ref={historySectionRef} className="flex scroll-mt-4 items-center justify-between gap-2">
             <p className="section-label">{l("历程", "History")}</p>
-            {detailEditing && (
+            {!historyDraft && (
               <button
                 type="button"
                 onClick={startCreatingHistoryEntry}
-                disabled={historySaving || historyDraft !== null}
+                disabled={historySaving}
                 className="btn btn-sm"
               >
-                {l("添加历程", "Add history entry")}
+                {l("记录新进展", "Record new progress")}
               </button>
             )}
           </div>
