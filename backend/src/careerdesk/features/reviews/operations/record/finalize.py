@@ -105,6 +105,16 @@ def _resolve_target_plan(
             "AND company_key = ? AND position_key = ?",
             (user_id, *identity_key),
         ).fetchone()
+        if resolved is None and len(identity_key[0]) >= 2:
+            candidates = conn.execute(
+                f"SELECT {columns} FROM applications WHERE user_id = ? "
+                "AND position_key = ? "
+                "AND (instr(company_key, ?) > 0 OR instr(?, company_key) > 0) "
+                "ORDER BY id LIMIT 2",
+                (user_id, identity_key[1], identity_key[0], identity_key[0]),
+            ).fetchall()
+            if len(candidates) == 1:
+                resolved = candidates[0]
     # A company-only fallback is safe only when the user/model did not provide a
     # position at all.  An explicit, different position is a distinct identity:
     # falling back to the company's sole existing application would mix one job's
@@ -117,6 +127,13 @@ def _resolve_target_plan(
             "ORDER BY id LIMIT 2",
             (user_id, company_key),
         ).fetchall()
+        if not rows and len(company_key) >= 2:
+            rows = conn.execute(
+                f"SELECT {columns} FROM applications WHERE user_id = ? "
+                "AND (instr(company_key, ?) > 0 OR instr(?, company_key) > 0) "
+                "ORDER BY id LIMIT 2",
+                (user_id, company_key, company_key),
+            ).fetchall()
         if len(rows) == 1:
             resolved = rows[0]
     try:

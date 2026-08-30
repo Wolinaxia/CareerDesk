@@ -213,6 +213,7 @@ class UpdateApplicationTool(Tool):
             "时传 new_stage=withdrawn；rejected 只表示被公司拒绝。company/position 填现在记录里的名字，"
             "new_* 只填要改的项。多条批量不能修改 company/position；身份修改必须单独作为一条请求。"
             "普通修改成功后页面会显示每条可信可撤销收据；自然语言不能执行 Undo。"
+            "company 可以使用用户原话中的常见简称；系统只会在唯一候选时命中，多个候选时必须让用户确认，不能猜。"
             "任一高风险确认卡尝试后，本轮禁用五个求职记录/proposal 工具；查询与偏好仍可用。",
             origin="careerdesk",
         )
@@ -242,7 +243,8 @@ class UpdateApplicationTool(Tool):
                 "updates",
                 "array",
                 "本次请求的完整岗位修改数组（1–20 条）；单条也必须放进数组。每项 company 必填，"
-                "position 在同公司有多条记录时必填；只传用户明确要求修改的 new_*/clear_*/next_* 字段。",
+                "position 在同公司有多条记录时必填；company 可保留用户使用的简称，系统只接受唯一匹配；"
+                "只传用户明确要求修改的 new_*/clear_*/next_* 字段。",
                 schema={
                     "type": "array",
                     "minItems": 1,
@@ -300,16 +302,16 @@ class UpdateApplicationTool(Tool):
             expected_revision: int | None = None
             if next_action_patch is not None or note_intent is not None:
                 resolved = applications.resolve_application_by_name(
-                    self._db_path, self._user_id, company, position,
+                    self._db_path, self._user_id, company, position, fuzzy=True,
                 )
                 if resolved["status"] == "not_found":
                     return ToolResponse.error(
-                        f"updates[{index}] 没找到精确匹配的投递记录：{company}；整批没有写入。"
+                        f"updates[{index}] 没找到匹配的投递记录：{company}；整批没有写入。"
                     )
                 if resolved["status"] == "ambiguous":
                     return ToolResponse.partial(
-                        f"updates[{index}] 的 {company} 有多条投递记录（"
-                        f"{' / '.join(resolved['options'])}）；整批没有写入，请先确认岗位。",
+                        f"updates[{index}] 的目标可能是多条记录（"
+                        f"{' / '.join(resolved['options'])}）；整批没有写入，请确认完整公司和岗位名。",
                         data={
                             "operation_type": "application_update_batch",
                             "state": "rejected",
@@ -328,6 +330,8 @@ class UpdateApplicationTool(Tool):
                     return ToolResponse.error(
                         f"updates[{index}] 的岗位刚被删除或合并；整批没有写入。"
                     )
+                company = resolved["company"]
+                position = resolved["position"]
                 expected_application_id = detail["id"]
                 expected_revision = detail["revision"]
                 if next_action_patch is not None:

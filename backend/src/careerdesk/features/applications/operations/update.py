@@ -400,7 +400,28 @@ def _locate_target(conn: Connection, user_id: str, command: ApplicationUpdateCom
             "AND company_key = ? AND position_key = ?",
             (user_id, *identity_key),
         ).fetchone()
-        return row[0] if row is not None else {"status": "not_found"}
+        if row is not None:
+            return row[0]
+        if len(identity_key[0]) < 2:
+            return {"status": "not_found"}
+        rows = conn.execute(
+            "SELECT id, company, position FROM applications WHERE user_id = ? "
+            "AND position_key = ? "
+            "AND (instr(company_key, ?) > 0 OR instr(?, company_key) > 0) "
+            "ORDER BY company, position, id LIMIT ?",
+            (user_id, identity_key[1], identity_key[0], identity_key[0],
+             MAX_SELECTOR_OPTIONS + 1),
+        ).fetchall()
+        if len(rows) > MAX_SELECTOR_OPTIONS:
+            raise ApplicationUpdateOperationConflict("匹配岗位过多，请提供完整公司名")
+        if len(rows) == 1:
+            return rows[0][0]
+        if rows:
+            return {
+                "status": "ambiguous",
+                "options": [f"{row[1]} · {row[2]}" for row in rows],
+            }
+        return {"status": "not_found"}
     company_key = normalize_application_identity_part(command.company)
     rows = conn.execute(
         "SELECT id, position FROM applications WHERE user_id = ? "
@@ -414,6 +435,22 @@ def _locate_target(conn: Connection, user_id: str, command: ApplicationUpdateCom
         return rows[0][0]
     if rows:
         return {"status": "ambiguous", "options": [row[1] for row in rows]}
+    if len(company_key) >= 2:
+        rows = conn.execute(
+            "SELECT id, company, position FROM applications WHERE user_id = ? "
+            "AND (instr(company_key, ?) > 0 OR instr(?, company_key) > 0) "
+            "ORDER BY company, position, id LIMIT ?",
+            (user_id, company_key, company_key, MAX_SELECTOR_OPTIONS + 1),
+        ).fetchall()
+        if len(rows) > MAX_SELECTOR_OPTIONS:
+            raise ApplicationUpdateOperationConflict("匹配岗位过多，请提供完整公司和岗位名")
+        if len(rows) == 1:
+            return rows[0][0]
+        if rows:
+            return {
+                "status": "ambiguous",
+                "options": [f"{row[1]} · {row[2]}" for row in rows],
+            }
     return {"status": "not_found"}
 
 

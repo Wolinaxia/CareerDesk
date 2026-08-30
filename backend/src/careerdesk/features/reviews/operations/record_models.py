@@ -32,6 +32,17 @@ REVIEW_RECORD_CONTRACT_VERSION = 1
 MAX_REVIEW_RECORD_SOURCE_CHARS = 50_000
 MAX_REVIEW_RECORD_COMBINED_CHARS = 100_000
 MAX_REVIEW_RECORD_SUPPLEMENTS = 20
+
+def _company_identity_matches(left: str, right: str, *, allow_abbreviation: bool) -> bool:
+    left_key = normalize_application_identity_part(left)
+    right_key = normalize_application_identity_part(right)
+    return left_key == right_key or (
+        allow_abbreviation
+        and len(left_key) >= 2
+        and (left_key in right_key or right_key in left_key)
+    )
+
+
 # Only the hard application identity can require clarification, and it has
 # exactly two independent fields. Keep this aligned with the browser contract.
 MAX_REVIEW_RECORD_MISSING_FIELDS = 2
@@ -467,8 +478,10 @@ class ReviewRecordResult(BaseModel):
                 or after.revision != before.revision + 1
             ):
                 raise ValueError("derivation application projections disagree with extraction")
-            if normalize_application_identity_part(extraction.company) != (
-                normalize_application_identity_part(self.application.company)
+            if not _company_identity_matches(
+                extraction.company,
+                self.application.company,
+                allow_abbreviation=not self.derivation.application_created,
             ):
                 raise ValueError("result company identity disagrees with extraction")
             if extraction.position is not None and (
@@ -521,9 +534,12 @@ class ReviewRecordPreview(BaseModel):
             raise ValueError("resolved target plan cannot retain missing fields")
         if self.extraction.clear_next_action and self.target_plan.current_next_action is None:
             raise ValueError("cannot clear a next action that does not exist")
-        # Existing targets use stored text; extraction may differ only in whitespace.
-        if squash_whitespace(self.extraction.company) != squash_whitespace(
-            self.target_plan.company
+        # Existing targets may be selected by a unique company abbreviation. New
+        # records still require the extracted identity verbatim.
+        if not _company_identity_matches(
+            self.extraction.company,
+            self.target_plan.company,
+            allow_abbreviation=self.target_plan.kind == "existing",
         ):
             raise ValueError("target plan company must match extracted company")
         if self.target_plan.kind == "new" and squash_whitespace(

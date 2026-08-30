@@ -9,7 +9,6 @@ from ...platform.database import (
     application_identity_key,
     normalize_application_identity_part,
     now_iso,
-    squash_whitespace,
     transaction,
 )
 from ..applications.public import ApplicationNextAction, apply_application_progress_in_transaction
@@ -43,12 +42,28 @@ def _resolve_application(
         ).fetchone()
         if row is not None:
             return row[0], False
+        if len(identity_key[0]) >= 2:
+            rows = conn.execute(
+                "SELECT id FROM applications WHERE user_id = ? AND position_key = ? "
+                "AND (instr(company_key, ?) > 0 OR instr(?, company_key) > 0) "
+                "ORDER BY id LIMIT 2",
+                (user_id, identity_key[1], identity_key[0], identity_key[0]),
+            ).fetchall()
+            if len(rows) == 1:
+                return rows[0][0], False
     company_key = normalize_application_identity_part(company)
     rows = conn.execute(
         "SELECT id FROM applications WHERE user_id = ? AND company_key = ? "
         "ORDER BY id LIMIT 2",
         (user_id, company_key),
     ).fetchall()
+    if not rows and len(company_key) >= 2:
+        rows = conn.execute(
+            "SELECT id FROM applications WHERE user_id = ? "
+            "AND (instr(company_key, ?) > 0 OR instr(?, company_key) > 0) "
+            "ORDER BY id LIMIT 2",
+            (user_id, company_key, company_key),
+        ).fetchall()
     if len(rows) == 1 and company_fallback:
         return rows[0][0], False
     timestamp = now_iso()
@@ -203,9 +218,23 @@ def _derive_review_in_transaction(
             "SELECT id, company, position FROM applications WHERE user_id = ? AND id = ?",
             (user_id, frozen_application_id),
         ).fetchone()
-        if current is None or squash_whitespace(current[1]) != squash_whitespace(
+        stored_company_key = (
+            normalize_application_identity_part(current[1]) if current is not None else ""
+        )
+        extracted_company_key = normalize_application_identity_part(
             extraction["company"],
-        ):
+        )
+        company_matches = (
+            extracted_company_key == stored_company_key
+            or (
+                len(extracted_company_key) >= 2
+                and (
+                    extracted_company_key in stored_company_key
+                    or stored_company_key in extracted_company_key
+                )
+            )
+        )
+        if current is None or not company_matches:
             raise ReviewConflict("frozen review application no longer matches")
         application_id, company, position = current
         application_created = False

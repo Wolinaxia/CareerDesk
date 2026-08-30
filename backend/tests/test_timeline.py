@@ -347,6 +347,33 @@ def test_resolve_application_by_name_tolerates_internal_space(db_path):
     assert miss["status"] == "not_found"
 
 
+def test_fuzzy_application_resolution_requires_one_unambiguous_company(db_path):
+    for company, position in (("字节跳动", "AI工程师"), ("字节云", "产品经理")):
+        timeline_repository.create_application_profile(
+            db_path, "u1", company=company, position=position,
+            department=None, channel=None, stage="applied", current_step=None,
+            next_action=None, jd_text=None,
+        )
+
+    exact_role = timeline_repository.resolve_application_by_name(
+        db_path, "u1", "字节跳", "AI工程师", fuzzy=True,
+    )
+    assert exact_role["status"] == "ok"
+    assert (exact_role["company"], exact_role["position"]) == ("字节跳动", "AI工程师")
+
+    ambiguous = timeline_repository.resolve_application_by_name(
+        db_path, "u1", "字节", None, fuzzy=True,
+    )
+    assert ambiguous == {
+        "status": "ambiguous",
+        "options": ["字节云 · 产品经理", "字节跳动 · AI工程师"],
+    }
+
+    assert timeline_repository.resolve_application_by_name(
+        db_path, "u1", "字", "AI工程师", fuzzy=True,
+    )["status"] == "not_found"
+
+
 def test_explicit_applied_stage_without_date_keeps_undated_state_history(db_path):
     payload = {"positions": [{
         "company": "状态测试公司",

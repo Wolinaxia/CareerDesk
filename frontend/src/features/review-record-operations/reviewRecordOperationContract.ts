@@ -5,6 +5,21 @@ import type {
 } from "../applications/applicationContract";
 import { normalizeApplicationIdentityPart } from "../applications/applicationIdentity.ts";
 
+function companyIdentityMatches(
+  left: string | null,
+  right: string | null,
+  allowAbbreviation: boolean,
+): boolean {
+  const leftKey = normalizeApplicationIdentityPart(left);
+  const rightKey = normalizeApplicationIdentityPart(right);
+  if (leftKey === null || rightKey === null) return leftKey === rightKey;
+  return leftKey === rightKey || (
+    allowAbbreviation
+    && leftKey.length >= 2
+    && (leftKey.includes(rightKey) || rightKey.includes(leftKey))
+  );
+}
+
 export type ReviewRecordMode = "initial" | "supplement";
 export type ReviewRecordState =
   | "processing"
@@ -432,8 +447,11 @@ function isPreview(value: unknown): value is ReviewRecordPreview {
   const extraction = value.extraction;
   const plan = value.target_plan;
   if (value.missing.length !== 0) return false;
-  if (normalizeApplicationIdentityPart(extraction.company)
-      !== normalizeApplicationIdentityPart(plan.company)) return false;
+  if (!companyIdentityMatches(
+    extraction.company,
+    plan.company,
+    plan.kind === "existing",
+  )) return false;
   if (plan.kind === "new" && normalizeApplicationIdentityPart(extraction.position)
       !== normalizeApplicationIdentityPart(plan.position)) return false;
   if (extraction.clear_next_action && plan.current_next_action === null) return false;
@@ -576,8 +594,11 @@ function isResult(value: unknown): value is ReviewRecordResult {
       || after.channel !== (extraction.channel || before.channel)
       || after.applied_date !== expectedAppliedDate
       || after.revision !== before.revision + 1
-      || normalizeApplicationIdentityPart(extraction.company)
-        !== normalizeApplicationIdentityPart(application.company)
+      || !companyIdentityMatches(
+        extraction.company,
+        application.company,
+        !derivation.application_created,
+      )
       || (extraction.position !== null
         && normalizeApplicationIdentityPart(extraction.position)
           !== normalizeApplicationIdentityPart(application.position))) return false;

@@ -17,6 +17,8 @@ def resolve_application_by_name(
     user_id: str,
     company: str,
     position: str | None = None,
+    *,
+    fuzzy: bool = False,
 ) -> dict:
     company_key = normalize_application_identity_part(company)
     if not company_key:
@@ -38,12 +40,37 @@ def resolve_application_by_name(
                     "status": "ok", "id": row[0], "company": row[1],
                     "position": row[2], "revision": row[3], "application_note": row[4],
                 }
-            return {"status": "not_found"}
+            if not fuzzy or len(company_key) < 2:
+                return {"status": "not_found"}
+            position_key = normalize_application_identity_part(position)
+            rows = conn.execute(
+                "SELECT id, company, position, revision, application_note "
+                "FROM applications WHERE user_id = ? AND position_key = ? "
+                "AND (instr(company_key, ?) > 0 OR instr(?, company_key) > 0) "
+                "ORDER BY company, position, id LIMIT 101",
+                (user_id, position_key, company_key, company_key),
+            ).fetchall()
+            return _resolved_application_rows(rows, fuzzy_company=True)
         rows = conn.execute(
             "SELECT id, company, position, revision, application_note "
             "FROM applications WHERE user_id = ? AND company_key = ?",
             (user_id, company_key),
         ).fetchall()
+        if not rows and fuzzy and len(company_key) >= 2:
+            rows = conn.execute(
+                "SELECT id, company, position, revision, application_note "
+                "FROM applications WHERE user_id = ? "
+                "AND (instr(company_key, ?) > 0 OR instr(?, company_key) > 0) "
+                "ORDER BY company, position, id LIMIT 101",
+                (user_id, company_key, company_key),
+            ).fetchall()
+            return _resolved_application_rows(rows, fuzzy_company=True)
+    return _resolved_application_rows(rows, fuzzy_company=False)
+
+
+def _resolved_application_rows(rows: list[tuple], *, fuzzy_company: bool) -> dict:
+    if len(rows) > 100:
+        return {"status": "ambiguous", "options": ["匹配结果过多，请补充完整公司和岗位名"]}
     if len(rows) == 1:
         return {
             "status": "ok", "id": rows[0][0], "company": rows[0][1],
@@ -51,7 +78,13 @@ def resolve_application_by_name(
             "application_note": rows[0][4],
         }
     if rows:
-        return {"status": "ambiguous", "options": [row[2] for row in rows]}
+        return {
+            "status": "ambiguous",
+            "options": [
+                f"{row[1]} · {row[2]}" if fuzzy_company else row[2]
+                for row in rows
+            ],
+        }
     return {"status": "not_found"}
 
 

@@ -109,6 +109,29 @@ def test_spoken_application_lands_in_one_shot(tmp_path):
     assert entries == [("提交申请", "review")]
 
 
+def test_spoken_progress_with_unique_company_abbreviation_reuses_existing_role(tmp_path):
+    db_path = str(tmp_path / "biz.db")
+    init_db(db_path)
+    first = ReviewService(
+        db_path, scripted(applied_extraction("字节跳动", "厚道工程师")),
+    )
+    run(execute_review_record(
+        first, "u1", "我申请了字节跳动的厚道工程师岗位", today=TODAY,
+    ))
+
+    follow_up = ReviewService(
+        db_path, scripted(applied_extraction("字节", "厚道工程师")),
+    )
+    run(execute_review_record(
+        follow_up, "u1", "更新一下，字节厚道工程师有新进展", today=TODAY,
+    ))
+
+    assert rows(db_path, "SELECT company, position FROM applications") == [
+        ("字节跳动", "厚道工程师"),
+    ]
+    assert rows(db_path, "SELECT COUNT(*) FROM timeline_entries") == [(2,)]
+
+
 def test_past_application_fact_sets_date_without_downgrading_current_stage(tmp_path):
     db_path = str(tmp_path / "biz.db")
     init_db(db_path)
@@ -193,6 +216,26 @@ def test_update_tool_disambiguation_and_stage(tmp_path):
     assert run_update(
         db_path, {"company": "没投过的公司", "new_stage": "pooled"},
     ).status in {"error", "partial"}
+
+
+def test_update_tool_resolves_unique_company_abbreviation(tmp_path):
+    db_path = str(tmp_path / "biz.db")
+    init_db(db_path)
+    service = ReviewService(
+        db_path, scripted(applied_extraction("字节跳动", "AI工程师")),
+    )
+    run(execute_review_record(
+        service, "u1", "投了字节跳动的AI工程师", today=TODAY,
+    ))
+
+    response = run_update(
+        db_path, {"company": "字节", "position": "AI工程师", "new_stage": "pooled"},
+    )
+
+    assert response.status == "success"
+    assert rows(db_path, "SELECT company, position, stage FROM applications") == [
+        ("字节跳动", "AI工程师", "pooled"),
+    ]
 
 
 def test_update_tool_manages_one_application_note_without_echoing_value(tmp_path):

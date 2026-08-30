@@ -487,6 +487,19 @@ test("preview identity normalization and sorted knowledge ids mirror the backend
   whitespaceIdentity.preview.target_plan.company = "Example";
   assert.equal(isReviewRecordOperation(whitespaceIdentity), true);
 
+  const existingAbbreviation = pendingOperation();
+  existingAbbreviation.preview.extraction.company = "Exam";
+  existingAbbreviation.preview.target_plan.company = "Example";
+  existingAbbreviation.preview.target_plan.kind = "existing";
+  existingAbbreviation.preview.target_plan.application_id = 9;
+  existingAbbreviation.preview.target_plan.created_time = "2026-07-01T10:00:00Z";
+  existingAbbreviation.preview.target_plan.revision = 0;
+  assert.equal(isReviewRecordOperation(existingAbbreviation), true);
+
+  const oneCharacterAbbreviation = structuredClone(existingAbbreviation);
+  oneCharacterAbbreviation.preview.extraction.company = "E";
+  assert.equal(isReviewRecordOperation(oneCharacterAbbreviation), false);
+
   const unsortedKnowledge = appliedOperation();
   unsortedKnowledge.result.derivation.knowledge_point_ids = [2, 1];
   assert.equal(isReviewRecordOperation(unsortedKnowledge), false);
