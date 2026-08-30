@@ -7,6 +7,7 @@ export const APP_ROUTE_PATHS = {
   calendar: "/calendar",
   questions: "/questions",
   library: "/library",
+  material: "/material",
   settings: "/settings",
 } as const;
 

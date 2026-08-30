@@ -13,6 +13,7 @@ test("the route path allowlist is unique and canonical", () => {
     calendar: "/calendar",
     questions: "/questions",
     library: "/library",
+    material: "/material",
     settings: "/settings",
   });
   assert.equal(
@@ -35,6 +36,7 @@ test("known React Router path variants resolve to one canonical pathname", () =>
     ["/CALENDAR/", APP_ROUTE_PATHS.calendar],
     ["/que%73tions", APP_ROUTE_PATHS.questions],
     ["/LIBRARY///", APP_ROUTE_PATHS.library],
+    ["/MATERIAL///", APP_ROUTE_PATHS.material],
     ["/Settings", APP_ROUTE_PATHS.settings],
     ["/SeTTings///", APP_ROUTE_PATHS.settings],
     ["/%73ettings", APP_ROUTE_PATHS.settings],

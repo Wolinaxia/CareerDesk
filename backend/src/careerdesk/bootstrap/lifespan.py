@@ -50,6 +50,12 @@ async def lifespan(app: FastAPI):
 
         ensure_calendar_schema(settings.db_path)
 
+        from ..features.personal_material.repository import (
+            ensure_schema as ensure_personal_material_schema,
+        )
+
+        ensure_personal_material_schema(settings.db_path)
+
         from ..orchestration.assistant.service import maintain_turn_ledger
         from ..services.recovery import recover_interrupted_work
 

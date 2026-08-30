@@ -16,7 +16,7 @@ import { installLocaleSync } from "../i18n/localePreference";
 import { useT } from "../i18n/useT";
 
 
-type IconName = "chat" | "flame" | "board" | "calendar" | "folder" | "sliders";
+type IconName = "chat" | "flame" | "board" | "calendar" | "folder" | "blocks" | "sliders";
 
 function Icon({ name }: { name: IconName }) {
   const paths: Record<IconName, string> = {
@@ -25,6 +25,7 @@ function Icon({ name }: { name: IconName }) {
     board: "M3 3.5h3.4v9H3zM7.3 3.5h3.4v6H7.3zM11.6 3.5H15v11h-3.4z",
     calendar: "M4 2.5v2M14 2.5v2M3 6.5h12M4 4h10a1 1 0 0 1 1 1v8.5H3V5a1 1 0 0 1 1-1Zm2 5h2m2 0h2m-6 2.5h2m2 0h2",
     folder: "M2.5 4.5A1.5 1.5 0 0 1 4 3h3l1.5 2H14a1.5 1.5 0 0 1 1.5 1.5V12A1.5 1.5 0 0 1 14 13.5H4A1.5 1.5 0 0 1 2.5 12z",
+    blocks: "M3 3h5v5H3zM10 3h5v5h-5zM3 10h5v4H3zM10 10h5v4h-5z",
     sliders: "M2.5 5h4.9M10.6 5h4.9M10.6 5a1.6 1.6 0 1 1-3.2 0 1.6 1.6 0 1 1 3.2 0M2.5 12h2.8M8.5 12h6.9M8.5 12a1.6 1.6 0 1 1-3.2 0 1.6 1.6 0 1 1 3.2 0",
   };
   return (
@@ -59,6 +60,7 @@ const NAV_LAB: NavEntry[] = [
 ];
 const NAV_MANAGEMENT: NavEntry[] = [
   { to: APP_ROUTE_PATHS.library, labelKey: "shell.nav.library", icon: "folder" },
+  { to: APP_ROUTE_PATHS.material, labelKey: "shell.nav.material", icon: "blocks" },
   { to: APP_ROUTE_PATHS.settings, labelKey: "shell.nav.settings", icon: "sliders" },
 ];
 
@@ -69,6 +71,7 @@ const PAGE_META: Record<string, { titleKey: string; hintKey: string; badgeKey?: 
     badgeKey: "shell.experimental",
   },
   [APP_ROUTE_PATHS.library]: { titleKey: "shell.nav.library", hintKey: "shell.page.library.hint" },
+  [APP_ROUTE_PATHS.material]: { titleKey: "shell.nav.material", hintKey: "shell.page.material.hint" },
   [APP_ROUTE_PATHS.calendar]: { titleKey: "shell.nav.calendar", hintKey: "shell.page.calendar.hint" },
   [APP_ROUTE_PATHS.settings]: { titleKey: "shell.nav.settings", hintKey: "shell.page.settings.hint" },
 };

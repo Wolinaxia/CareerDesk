@@ -16,6 +16,11 @@ const CalendarPage = lazy(() =>
 const LibraryPage = lazy(() =>
   import("../features/library/LibraryPage").then((module) => ({ default: module.LibraryPage })),
 );
+const PersonalMaterialPage = lazy(() =>
+  import("../features/personal-material/PersonalMaterialPage").then((module) => ({
+    default: module.PersonalMaterialPage,
+  })),
+);
 const SettingsPage = lazy(() =>
   import("../features/settings/SettingsPage").then((module) => ({ default: module.SettingsPage })),
 );
@@ -62,6 +67,7 @@ export function RouteContent({ pathname }: { pathname: string }) {
             element={<Navigate replace to={`${APP_ROUTE_PATHS.grill}?view=questions`} />}
           />
           <Route path={APP_ROUTE_PATHS.library} element={<LibraryPage />} />
+          <Route path={APP_ROUTE_PATHS.material} element={<PersonalMaterialPage />} />
           <Route path={APP_ROUTE_PATHS.settings} element={<SettingsPage />} />
           <Route path="*" element={<NotFoundPage />} />
         </Routes>

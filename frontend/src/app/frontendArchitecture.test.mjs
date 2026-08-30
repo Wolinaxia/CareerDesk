@@ -17,6 +17,7 @@ const pageOwners = [
   ["grill", "GrillLabPage"],
   ["grill", "GrillPage"],
   ["library", "LibraryPage"],
+  ["personal-material", "PersonalMaterialPage"],
   ["questions", "QuestionsPage"],
   ["settings", "SettingsPage"],
   ["timeline", "TimelinePage"],
@@ -25,6 +26,7 @@ const lazyRouteFeatures = [
   ["calendar", "CalendarPage"],
   ["grill", "GrillLabPage"],
   ["library", "LibraryPage"],
+  ["personal-material", "PersonalMaterialPage"],
   ["settings", "SettingsPage"],
   ["timeline", "TimelinePage"],
 ];
@@ -414,7 +416,9 @@ test("known route variants use one shell identity and a state-preserving replace
     ["effectivePathname"],
   );
 
-  const knownPathLiterals = new Set(["/", "/grill", "/timeline", "/questions", "/library", "/settings"]);
+  const knownPathLiterals = new Set([
+    "/", "/grill", "/timeline", "/questions", "/library", "/material", "/settings",
+  ]);
   for (const [url, source, kind] of [
     [appUrl, appSource, ts.ScriptKind.TSX],
     [routeContentUrl, routeContentSource, ts.ScriptKind.TSX],
@@ -568,7 +572,7 @@ test("optional routes have keyed loading and failure isolation", async () => {
   assert.equal(routesElements.length, 1);
   assert.equal(boundaries.length, 1);
   assert.equal(suspenseElements.length, 1);
-  assert.equal(routeElements.length, 8);
+  assert.equal(routeElements.length, 9);
   assert.equal(jsxAttributeExpression(boundaries[0], "key", sourceFile), "pathname");
   assert.equal(
     jsxAttributeExpression(suspenseElements[0], "fallback", sourceFile),
@@ -586,6 +590,7 @@ test("optional routes have keyed loading and failure isolation", async () => {
       "APP_ROUTE_PATHS.calendar": "<CalendarPage/>",
       "APP_ROUTE_PATHS.questions": "<Navigatereplaceto={`${APP_ROUTE_PATHS.grill}?view=questions`}/>",
       "APP_ROUTE_PATHS.library": "<LibraryPage/>",
+      "APP_ROUTE_PATHS.material": "<PersonalMaterialPage/>",
       "APP_ROUTE_PATHS.settings": "<SettingsPage/>",
       "*": "<NotFoundPage/>",
     },
