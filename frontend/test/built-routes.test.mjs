@@ -13,6 +13,7 @@ const routePages = [
   ["calendar", "CalendarPage"],
   ["grill", "GrillLabPage"],
   ["library", "LibraryPage"],
+  ["personal-material", "PersonalMaterialPage"],
   ["settings", "SettingsPage"],
   ["timeline", "TimelinePage"],
 ];
@@ -42,7 +43,7 @@ function staticClosure(entry, chunksByFileName) {
   return files;
 }
 
-test("the production graph defers five route groups while keeping Chat in the initial graph", async (context) => {
+test("the production graph defers six route groups while keeping Chat in the initial graph", async (context) => {
   const result = await build({
     logLevel: "silent",
     build: { write: false, manifest: false },
@@ -117,6 +118,6 @@ test("the production graph defers five route groups while keeping Chat in the in
   );
   context.diagnostic(
     `initial JS graph: ${initialGraphBytes} B (${((1 - ratio) * 100).toFixed(2)}% smaller); `
-    + `five deferred route groups: ${deferredRouteBytes} B`,
+    + `six deferred route groups: ${deferredRouteBytes} B`,
   );
 });
